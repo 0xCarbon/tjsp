@@ -330,6 +330,17 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
 
   message(paste0("Acessando primeira página, status: ", r1$status_code))
 
+  # Check if no results were found
+  no_results <- r1 |>
+    httr::content() |>
+    xml2::xml_text() |>
+    stringr::str_detect("Não foi encontrado nenhum resultado correspondente à busca realizada.")
+  
+  if (no_results) {
+    message("Não foram encontrados resultados para a busca realizada.")
+    return(invisible(NULL))
+  }
+  
   if (!is.null(n)) {
     paginas <- 1:n
     message(paste0("Número de páginas definido pelo usuário: ", n))
