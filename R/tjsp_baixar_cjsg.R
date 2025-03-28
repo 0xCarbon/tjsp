@@ -318,26 +318,43 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
   response <- httr::POST(link_cjsg, encode = "form", body = body,
                          httr::accept("text/html; charset=latin1;"))
   
+  # Verificar se a resposta foi bem-sucedida
+  if (response$status_code != 200) {
+    stop(paste0("Erro na requisição inicial. Status: ", response$status_code))
+  }
+  
   message(paste0("[", Sys.time(), "] Requisição inicial enviada, status: ", response$status_code))
 
   r1 <- httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=1"),
                   httr::set_cookies(unlist(response$cookies)), httr::accept("text/html; charset=latin1;")
                   )
 
+  # Verificar se a primeira página foi acessada com sucesso
+  if (r1$status_code != 200) {
+    stop(paste0("Erro ao acessar a primeira página. Status: ", r1$status_code))
+  }
+  
   message(paste0("[", Sys.time(), "] Acessando primeira página, status: ", r1$status_code))
 
   if (!is.null(n)) {
     paginas <- 1:n
     message(paste0("[", Sys.time(), "] Número de páginas definido pelo usuário: ", n))
   } else {
-    max_pag <- r1 |>
+    max_pag_node <- r1 |>
       httr::content() |>
-      xml2::xml_find_all(xpath = "//td[contains(., 'Resultados')]") |>
-      xml2::xml_text(trim = T) |>
-      stringr::str_extract("\\d+$") |>
-      as.numeric() |>
-      magrittr::divide_by(20) |>
-      ceiling()
+      xml2::xml_find_all(xpath = "//td[contains(., 'Resultados')]")
+    
+    if (length(max_pag_node) == 0) {
+      warning("Não foi possível encontrar informações sobre o número de resultados. Verifique se a busca retornou algum resultado.")
+      max_pag <- 0
+    } else {
+      max_pag <- max_pag_node |>
+        xml2::xml_text(trim = T) |>
+        stringr::str_extract("\\d+$") |>
+        as.numeric() |>
+        magrittr::divide_by(20) |>
+        ceiling()
+    }
 
     paginas <- 1:max_pag
     message(paste0("[", Sys.time(), "] Número de páginas detectado: ", max_pag))
@@ -349,37 +366,33 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
   
   message(paste0("[", Sys.time(), "] Iniciando download das páginas..."))
   
-  # if (tipo == "A") {
-  #   purrr::walk(paginas, purrr::possibly(~{
-  #       arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
-  #                                 fim_pb, pagina = .x, diretorio)
-  #     Sys.sleep(1)
-  #     httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
-  #               httr::set_cookies(unlist(response$cookies)), httr::accept("text/html; charset=latin1;"),
-  #               httr::write_disk(arquivo, overwrite = TRUE))
-  #   }, NULL))
-  # } else {
-    purrr::walk(paginas, purrr::possibly(~{
-      contador <<- contador + 1
-      arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
-                                  fim_pb, pagina = .x, diretorio)
-      
-      if (contador %% 5 == 0 || contador == 1 || contador == total_paginas) {
-        message(paste0("[", Sys.time(), "] Baixando página ", .x, " de ", total_paginas, 
-                       " (", round(contador/total_paginas*100), "%) para ", arquivo))
-      }
-      
-      Sys.sleep(1)
-      response_pg <- httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
-                httr::set_cookies(unlist(response$cookies)), httr::write_disk(arquivo,
-                                                                              overwrite = TRUE))
+  # Substituindo purrr::walk com um loop for para permitir melhor tratamento de erros
+  for (pag in paginas) {
+    contador <- contador + 1
+    arquivo <- formatar_arquivo(inicio, fim, inicio_pb, fim_pb, pagina = pag, diretorio)
+    
+    if (contador %% 5 == 0 || contador == 1 || contador == total_paginas) {
+      message(paste0("[", Sys.time(), "] Baixando página ", pag, " de ", total_paginas, 
+                    " (", round(contador/total_paginas*100), "%) para ", arquivo))
+    }
+    
+    Sys.sleep(1)
+    
+    tryCatch({
+      response_pg <- httr::GET(
+        paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", pag),
+        httr::set_cookies(unlist(response$cookies)), 
+        httr::write_disk(arquivo, overwrite = TRUE)
+      )
       
       if (response_pg$status_code != 200) {
-        message(paste0("[", Sys.time(), "] ERRO ao baixar página ", .x, ": status ", response_pg$status_code))
+        stop(paste0("Erro ao baixar página ", pag, ": status ", response_pg$status_code))
       }
-      
-    }, NULL), .progress = TRUE)
-  # }
+    }, error = function(e) {
+      # Relança o erro com informações adicionais
+      stop(paste0("Falha ao processar página ", pag, ": ", e$message))
+    })
+  }
   
   message(paste0("[", Sys.time(), "] Download concluído. ", total_paginas, " páginas baixadas para o diretório: ", diretorio))
 }
