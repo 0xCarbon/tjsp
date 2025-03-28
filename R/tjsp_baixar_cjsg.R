@@ -46,10 +46,11 @@ tjsp_baixar_cjsg <-
            n = NULL,
            diretorio = ".") {
 
+  message(paste0("[", Sys.time(), "] Iniciando processo de busca jurisprudencial TJSP"))
+
   data_errada <-   verificar_datas(inicio, fim, inicio_pb, fim_pb)
 
   if (data_errada){
-
     stop("Verifique se:
          Colocou as datas no formato esperado;
          informou somente publica\u00E7\u00E3o ou julgamento;
@@ -135,7 +136,8 @@ tjsp_baixar_cjsg <-
 
     }
 
-  }
+  message(paste0("[", Sys.time(), "] Processo de busca jurisprudencial TJSP concluído com sucesso"))
+}
 
 
 
@@ -239,10 +241,24 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
           inicio_pb = "", fim_pb = "",comarca = "", sg = "T", cr = "", tipo = "A",
           n = NULL, diretorio = ".", aspas = FALSE) {
 
+  message(paste0("[", Sys.time(), "] Iniciando busca de jurisprudência TJSP"))
+  message(paste0("[", Sys.time(), "] Parâmetros: ",
+                 "livre='", livre, "', ",
+                 "ementa='", ementa, "', ",
+                 "processo='", processo, "', ",
+                 "classe='", classe, "', ",
+                 "tipo='", tipo, "', ",
+                 ifelse(inicio != "" && fim != "", 
+                        paste0("período julgamento: ", inicio, " a ", fim, ", "), ""),
+                 ifelse(inicio_pb != "" && fim_pb != "", 
+                        paste0("período publicação: ", inicio_pb, " a ", fim_pb, ", "), ""),
+                 "comarca='", comarca, "'"))
+  
   httr::set_config(httr::config(ssl_verifypeer = FALSE, accept_encoding = "latin1"))
   if (aspas == TRUE) livre <- deparse(livre)
 
   link_cjsg <- "https://esaj.tjsp.jus.br/cjsg/resultadoCompleta.do"
+  message(paste0("[", Sys.time(), "] Conectando ao TJSP: ", link_cjsg))
 
   body <- list(
     dados.buscaInteiroTeor = livre,
@@ -301,17 +317,18 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
 
   response <- httr::POST(link_cjsg, encode = "form", body = body,
                          httr::accept("text/html; charset=latin1;"))
+  
+  message(paste0("[", Sys.time(), "] Requisição inicial enviada, status: ", response$status_code))
 
-
-
-  r1 <- httr::GET("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=A&pagina=1",
+  r1 <- httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=1"),
                   httr::set_cookies(unlist(response$cookies)), httr::accept("text/html; charset=latin1;")
                   )
 
+  message(paste0("[", Sys.time(), "] Acessando primeira página, status: ", r1$status_code))
 
   if (!is.null(n)) {
     paginas <- 1:n
-
+    message(paste0("[", Sys.time(), "] Número de páginas definido pelo usuário: ", n))
   } else {
     max_pag <- r1 |>
       httr::content() |>
@@ -323,8 +340,15 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
       ceiling()
 
     paginas <- 1:max_pag
-
+    message(paste0("[", Sys.time(), "] Número de páginas detectado: ", max_pag))
   }
+  
+  # Contador para o progresso
+  total_paginas <- length(paginas)
+  contador <- 0
+  
+  message(paste0("[", Sys.time(), "] Iniciando download das páginas..."))
+  
   # if (tipo == "A") {
   #   purrr::walk(paginas, purrr::possibly(~{
   #       arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
@@ -336,12 +360,26 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
   #   }, NULL))
   # } else {
     purrr::walk(paginas, purrr::possibly(~{
+      contador <<- contador + 1
       arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
                                   fim_pb, pagina = .x, diretorio)
+      
+      if (contador %% 5 == 0 || contador == 1 || contador == total_paginas) {
+        message(paste0("[", Sys.time(), "] Baixando página ", .x, " de ", total_paginas, 
+                       " (", round(contador/total_paginas*100), "%) para ", arquivo))
+      }
+      
       Sys.sleep(1)
-      httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
+      response_pg <- httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
                 httr::set_cookies(unlist(response$cookies)), httr::write_disk(arquivo,
-                                                                                   overwrite = TRUE))
+                                                                              overwrite = TRUE))
+      
+      if (response_pg$status_code != 200) {
+        message(paste0("[", Sys.time(), "] ERRO ao baixar página ", .x, ": status ", response_pg$status_code))
+      }
+      
     }, NULL), .progress = TRUE)
   # }
+  
+  message(paste0("[", Sys.time(), "] Download concluído. ", total_paginas, " páginas baixadas para o diretório: ", diretorio))
 }
