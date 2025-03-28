@@ -104,7 +104,7 @@ tjsp_ler_execucao_penal_cd_processo1 <- function(arquivo){
     xml2::xml_text() |>
     stringr::str_extract("cdProcesso.+(?=')") |>
     xml2::url_absolute("https://esaj.tjsp.jus.br/cpopg/consultarDadosParte.do?") |>
-    tibble::tibble(cdprocesso, link = _)
+    (\(url) tibble::tibble(cdprocesso, link = url))()
 
   list(principal, documentos, historico, link)
 
