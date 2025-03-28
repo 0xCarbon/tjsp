@@ -325,23 +325,23 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
     paginas <- 1:max_pag
 
   }
-  if (tipo == "A") {
-    purrr::walk(paginas, purrr::possibly(~{
-        arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
-                                  fim_pb, pagina = .x, diretorio)
-      Sys.sleep(1)
-      httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=A&pagina=", .x),
-                httr::set_cookies(unlist(response$cookies)), httr::accept("text/html; charset=latin1;"),
-                httr::write_disk(arquivo, overwrite = TRUE))
-    }, NULL))
-  } else {
+  # if (tipo == "A") {
+  #   purrr::walk(paginas, purrr::possibly(~{
+  #       arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
+  #                                 fim_pb, pagina = .x, diretorio)
+  #     Sys.sleep(1)
+  #     httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
+  #               httr::set_cookies(unlist(response$cookies)), httr::accept("text/html; charset=latin1;"),
+  #               httr::write_disk(arquivo, overwrite = TRUE))
+  #   }, NULL))
+  # } else {
     purrr::walk(paginas, purrr::possibly(~{
       arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
                                   fim_pb, pagina = .x, diretorio)
       Sys.sleep(1)
-      httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=D&pagina=",
-                       .x), httr::set_cookies(unlist(response$cookies)), httr::write_disk(arquivo,
+      httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
+                httr::set_cookies(unlist(response$cookies)), httr::write_disk(arquivo,
                                                                                    overwrite = TRUE))
     }, NULL), .progress = TRUE)
-  }
+  # }
 }
