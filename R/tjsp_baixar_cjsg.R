@@ -346,36 +346,61 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
   total_paginas <- length(paginas)
   contador <- 0
   
-  # if (tipo == "A") {
-  #   purrr::walk(paginas, purrr::possibly(~{
-  #       arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
-  #                                 fim_pb, pagina = .x, diretorio)
-  #     Sys.sleep(1)
-  #     httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
-  #               httr::set_cookies(unlist(response$cookies)), httr::accept("text/html; charset=latin1;"),
-  #               httr::write_disk(arquivo, overwrite = TRUE))
-  #   }, NULL))
-  # } else {
-    purrr::walk(paginas, ~{
-      contador <<- contador + 1
-      arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
-                                  fim_pb, tipo, pagina = .x, diretorio)
-      
-      if (contador %% 5 == 0 || contador == 1 || contador == total_paginas) {
-        message(paste0(pattern, "Baixando página ", .x, " de ", total_paginas, 
-                       " (", round(contador/total_paginas*100), "%)"))
-      }
-      
-      Sys.sleep(1)
-      response_pg <- httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
-                httr::set_cookies(unlist(response$cookies)), httr::write_disk(arquivo,
-                                                                              overwrite = TRUE))
-      
-      if (response_pg$status_code != 200) {
-        stop(paste0(pattern, "Erro ao baixar página ", .x, ": status ", response_pg$status_code))
-      }
-    }, .progress = TRUE)
-  # }
+  # Initialize vector to track failed pages
+  failed_pages <- c()
   
-  message(paste0(pattern, "Download concluído. ", total_paginas, " páginas baixadas para o diretório: ", diretorio))
+  purrr::walk(paginas, ~{
+    contador <<- contador + 1
+    arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
+                                fim_pb, tipo, pagina = .x, diretorio)
+    
+    if (contador %% 5 == 0 || contador == 1 || contador == total_paginas) {
+      message(paste0(pattern, "Baixando página ", .x, " de ", total_paginas, 
+                     " (", round(contador/total_paginas*100), "%)"))
+    }
+    
+    # Implement retry logic with progressive backoff
+    success <- FALSE
+    attempts <- 0
+    max_attempts <- 3
+    
+    while (!success && attempts < max_attempts) {
+      attempts <- attempts + 1
+      backoff_time <- 2^attempts  # Progressive backoff: 2, 4, 8 seconds
+      
+      tryCatch({
+        Sys.sleep(if(attempts == 1) 1 else backoff_time)
+        response_pg <- httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=", .x),
+                  httr::set_cookies(unlist(response$cookies)), httr::write_disk(arquivo,
+                                                                               overwrite = TRUE))
+        
+        if (response_pg$status_code == 200) {
+          success <- TRUE
+        } else {
+          message(paste0(pattern, "Tentativa ", attempts, " falhou para página ", .x, ": status ", response_pg$status_code))
+        }
+      }, error = function(e) {
+        message(paste0(pattern, "Erro na tentativa ", attempts, " para página ", .x, ": ", e$message))
+      })
+      
+      if (!success && attempts < max_attempts) {
+        message(paste0(pattern, "Tentando novamente em ", backoff_time, " segundos..."))
+      }
+    }
+    
+    if (!success) {
+      message(paste0(pattern, "Falha ao baixar página ", .x, " após ", max_attempts, " tentativas. Continuando para a próxima página."))
+      failed_pages <<- c(failed_pages, .x)
+    }
+  }, .progress = TRUE)
+  
+  message(paste0(pattern, "Download concluído. ", total_paginas - length(failed_pages), " de ", total_paginas, 
+                " páginas baixadas para o diretório: ", diretorio))
+  
+  if (length(failed_pages) > 0) {
+    message(paste0(pattern, "As seguintes páginas falharam: ", paste(failed_pages, collapse = ", ")))
+  }
+  
+  # Return failed pages
+  return(failed_pages)
 }
