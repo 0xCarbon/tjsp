@@ -143,6 +143,7 @@ tjsp_baixar_cjsg <-
 #' @param fim  Data final julgamento
 #' @param inicio_pb data inicial registro/publicação
 #' @param fim_pb    data final registr/publicacao
+#' @param tipo tipo de busca
 #' @param pagina página
 #' @param diretorio diretorio
 #'
@@ -152,6 +153,7 @@ formatar_arquivo <- function(inicio,
                             fim,
                             inicio_pb,
                             fim_pb,
+                            tipo,
                             pagina,
                             diretorio){
 
@@ -167,7 +169,7 @@ formatar_arquivo <- function(inicio,
     f <- lubridate::dmy(fim) %>%
       stringr::str_replace_all("\\D","_")
 
-    arquivo <- file.path(diretorio,paste0(hora,"_inicio_",i,"_fim_",f,"_pagina_",pagina,".html"))
+    arquivo <- file.path(diretorio,paste0(hora,"_inicio_",i,"_fim_",f,"_pagina_",pagina,"_tipo_",tipo,".html"))
 
 
 
@@ -180,11 +182,11 @@ formatar_arquivo <- function(inicio,
       stringr::str_replace_all("\\D","_")
 
 
-    arquivo <- file.path(diretorio,paste0(hora,"_inicio_pb_",i,"_fim_pb_",f,"_pagina_",pagina,".html"))
+    arquivo <- file.path(diretorio,paste0(hora,"_inicio_pb_",i,"_fim_pb_",f,"_pagina_",pagina,"_tipo_",tipo,".html"))
 
   } else {
 
-    arquivo <- file.path(diretorio,paste0(hora,"_pagina_",pagina,".html"))
+    arquivo <- file.path(diretorio,paste0(hora,"_pagina_",pagina,"_tipo_",tipo,".html"))
 
   }
 
@@ -237,24 +239,32 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
           inicio_pb = "", fim_pb = "",comarca = "", sg = "T", cr = "", tipo = "A",
           n = NULL, diretorio = ".", aspas = FALSE) {
 
-  message(paste0("Iniciando busca de jurisprudência TJSP"))
-  message(paste0("Parâmetros: ",
+  pattern <- paste0("[", inicio_pb, "-", tipo, "]")
+  message(paste0(pattern, "Iniciando busca de jurisprudência TJSP"))
+  message(paste0(pattern, "Parâmetros: ",
                  "livre='", livre, "', ",
                  "ementa='", ementa, "', ",
                  "processo='", processo, "', ",
                  "classe='", classe, "', ",
+                 "assunto='", assunto, "', ",
+                 "orgao_julgador='", orgao_julgador, "', ",
+                 "inicio='", inicio, "', ",
+                 "fim='", fim, "', ",
+                 "inicio_pb='", inicio_pb, "', ",
+                 "fim_pb='", fim_pb, "', ",
+                 "comarca='", comarca, "', ",
+                 "sg='", sg, "', ",
+                 "cr='", cr, "', ",
                  "tipo='", tipo, "', ",
-                 ifelse(inicio != "" && fim != "", 
-                        paste0("período julgamento: ", inicio, " a ", fim, ", "), ""),
-                 ifelse(inicio_pb != "" && fim_pb != "", 
-                        paste0("período publicação: ", inicio_pb, " a ", fim_pb, ", "), ""),
-                 "comarca='", comarca, "'"))
+                 "n='", n, "', ",
+                 "diretorio='", diretorio, "', ",
+                 "aspas='", aspas, "'"))
   
   httr::set_config(httr::config(ssl_verifypeer = FALSE, accept_encoding = "latin1"))
   if (aspas == TRUE) livre <- deparse(livre)
 
   link_cjsg <- "https://esaj.tjsp.jus.br/cjsg/resultadoCompleta.do"
-  message(paste0("Conectando ao TJSP: ", link_cjsg))
+  message(paste0(pattern, "Conectando ao TJSP: ", link_cjsg))
 
   body <- list(
     dados.buscaInteiroTeor = livre,
@@ -315,20 +325,20 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
                          httr::accept("text/html; charset=latin1;"))
 
   if (response$status_code != 200) {
-    stop(paste0("Erro na requisição inicial. Status: ", response$status_code))
+    stop(paste0(pattern, "Erro na requisição inicial. Status: ", response$status_code))
   }
   
-  message(paste0("Requisição inicial enviada, status: ", response$status_code))
+  message(paste0(pattern, "Requisição inicial enviada, status: ", response$status_code))
 
   r1 <- httr::GET(paste0("https://esaj.tjsp.jus.br/cjsg/trocaDePagina.do?tipoDeDecisao=", tipo, "&pagina=1"),
                   httr::set_cookies(unlist(response$cookies)), httr::accept("text/html; charset=latin1;")
                   )
 
   if (r1$status_code != 200) {
-    stop(paste0("Erro ao acessar a primeira página. Status: ", r1$status_code))
+    stop(paste0(pattern, "Erro ao acessar a primeira página. Status: ", r1$status_code))
   }
 
-  message(paste0("Acessando primeira página, status: ", r1$status_code))
+  message(paste0(pattern, "Acessando primeira página, status: ", r1$status_code))
 
   # Check if no results were found
   no_results <- r1 |>
@@ -337,13 +347,13 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
     stringr::str_detect("Não foi encontrado nenhum resultado correspondente à busca realizada.")
   
   if (no_results) {
-    message("Não foram encontrados resultados para a busca realizada.")
+    message(paste0(pattern, "Não foram encontrados resultados para a busca realizada."))
     return(invisible(NULL))
   }
   
   if (!is.null(n)) {
     paginas <- 1:n
-    message(paste0("Número de páginas definido pelo usuário: ", n))
+    message(paste0(pattern, "Número de páginas definido pelo usuário: ", n))
   } else {
     max_pag <- r1 |>
       httr::content() |>
@@ -355,14 +365,14 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
       ceiling()
 
     paginas <- 1:max_pag
-    message(paste0("Número de páginas detectado: ", max_pag))
+    message(paste0(pattern, "Número de páginas detectado: ", max_pag))
   }
   
   # Contador para o progresso
   total_paginas <- length(paginas)
   contador <- 0
   
-  message(paste0("Iniciando download das páginas..."))
+  message(paste0(pattern, "Iniciando download das páginas..."))
   
   # if (tipo == "A") {
   #   purrr::walk(paginas, purrr::possibly(~{
@@ -377,10 +387,10 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
     purrr::walk(paginas, ~{
       contador <<- contador + 1
       arquivo <- formatar_arquivo(inicio, fim, inicio_pb,
-                                  fim_pb, pagina = .x, diretorio)
+                                  fim_pb, tipo, pagina = .x, diretorio)
       
       if (contador %% 5 == 0 || contador == 1 || contador == total_paginas) {
-        message(paste0("Baixando página ", .x, " de ", total_paginas, 
+        message(paste0(pattern, "Baixando página ", .x, " de ", total_paginas, 
                        " (", round(contador/total_paginas*100), "%) para ", arquivo))
       }
       
@@ -390,10 +400,10 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
                                                                               overwrite = TRUE))
       
       if (response_pg$status_code != 200) {
-        stop(paste0("Erro ao baixar página ", .x, ": status ", response_pg$status_code))
+        stop(paste0(pattern, "Erro ao baixar página ", .x, ": status ", response_pg$status_code))
       }
     }, .progress = TRUE)
   # }
   
-  message(paste0("Download concluído. ", total_paginas, " páginas baixadas para o diretório: ", diretorio))
+  message(paste0(pattern, "Download concluído. ", total_paginas, " páginas baixadas para o diretório: ", diretorio))
 }
