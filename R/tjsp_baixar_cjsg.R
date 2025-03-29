@@ -239,7 +239,7 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
           inicio_pb = "", fim_pb = "",comarca = "", sg = "T", cr = "", tipo = "A",
           n = NULL, diretorio = ".", aspas = FALSE) {
 
-  pattern <- paste0("[", inicio_pb, "-", tipo, "]")
+  pattern <- paste0("[", ifelse(inicio != "", inicio, inicio_pb), "-", tipo, "] ")
   message(paste0(pattern, "Iniciando busca de jurisprudência TJSP"))
   message(paste0(pattern, "Parâmetros: ",
                  "livre='", livre, "', ",
