@@ -363,7 +363,7 @@ tjsp_baixar_cjsg1 <- function (livre = "", ementa = "", processo = "", classe = 
       
       if (contador %% 5 == 0 || contador == 1 || contador == total_paginas) {
         message(paste0(pattern, "Baixando página ", .x, " de ", total_paginas, 
-                       " (", round(contador/total_paginas*100), "%) para ", arquivo))
+                       " (", round(contador/total_paginas*100), "%)"))
       }
       
       Sys.sleep(1)
