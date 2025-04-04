@@ -181,67 +181,81 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   message(paste0(pattern, "Total de resultados encontrados: ", total_resultados))
   message(paste0(pattern, "Número total de páginas a serem baixadas: ", n_paginas))
 
-  # Use map to get a list of lists (each inner list is the 'docs' from a page)
-  lista_docs <- purrr::map(1:n_paginas, purrr::slowly(~ {
-    pagina_atual <- .x
-    message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "..."))
+  # Store docs from the first request (page 1)
+  primeira_pagina <- conteudo$response$docs
+  message(paste0(pattern, "Usando resultados da consulta inicial para a página 1"))
+  
+  # If there's only one page, return the results immediately
+  if (n_paginas <= 1) {
+    json_output <- jsonlite::toJSON(primeira_pagina, auto_unbox = TRUE)
+    message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
+    return(json_output)
+  }
+  
+  # Use map to get a list of lists starting from page 2
+  lista_docs <- c(
+    list(primeira_pagina),  # Add the first page results
+    purrr::map(2:n_paginas, purrr::slowly(~ {
+      pagina_atual <- .x
+      message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "..."))
 
-    parametros_pagina <- list(
-      "action" = "consultas_solr_ajax",
-      "metodo" = "buscar_resultados",
-      "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
-    )
-
-    res_pagina <- tryCatch({
-      RCurl::postForm(
-        uri = url,
-        .params = parametros_pagina,
-        .opts = curl_options,
-        style = "post"
+      parametros_pagina <- list(
+        "action" = "consultas_solr_ajax",
+        "metodo" = "buscar_resultados",
+        "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
       )
-    }, error = function(e) {
-      message(paste0(pattern, "Erro ao realizar requisição para página ", pagina_atual, ": ", e$message))
-      return(NULL)
-    })
 
-    if(is.null(res_pagina)) {
-      message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, ". Pulando esta página."))
-      return(NULL)
-    }
-
-    # Parse JSON response directly (remove hex decoding)
-    conteudo_pagina <- tryCatch({
-      # Convert raw bytes to character string if needed
-      if(is.raw(res_pagina)) {
-        res_pagina <- rawToChar(res_pagina)
-      }
-      jsonlite::fromJSON(res_pagina)
-    }, error = function(e) {
-      message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
-      # For debugging
-      message(paste0(pattern, "Primeiros 100 caracteres da resposta: ", substr(as.character(res_pagina), 1, 100)))
-      return(NULL)
-    })
-        
-    if(is.null(conteudo_pagina)) {
-      message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
-      return(NULL)
-    }
-
-    # Check if the page response contains an error field
-    if (!is.null(conteudo_pagina$error)) {
-        message(paste0(pattern, "Aviso: Erro retornado pela API do TJRS ao buscar página ", pagina_atual, ". Detalhes: ", conteudo_pagina$error,". Pulando esta página."))
+      res_pagina <- tryCatch({
+        RCurl::postForm(
+          uri = url,
+          .params = parametros_pagina,
+          .opts = curl_options,
+          style = "post"
+        )
+      }, error = function(e) {
+        message(paste0(pattern, "Erro ao realizar requisição para página ", pagina_atual, ": ", e$message))
         return(NULL)
-    }
+      })
 
-    # Check for expected response structure on the page
-    if (is.null(conteudo_pagina$response) || is.null(conteudo_pagina$response$docs)) {
-         message(paste0(pattern, "Aviso: Estrutura de resposta inesperada da API do TJRS na página ", pagina_atual, ". Pulando esta página."))
-         return(NULL)
-    }
+      if(is.null(res_pagina)) {
+        message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, ". Pulando esta página."))
+        return(NULL)
+      }
 
-    return(conteudo_pagina$response$docs)
-  }, purrr::rate_delay(as.integer(delay))))
+      # Parse JSON response directly (remove hex decoding)
+      conteudo_pagina <- tryCatch({
+        # Convert raw bytes to character string if needed
+        if(is.raw(res_pagina)) {
+          res_pagina <- rawToChar(res_pagina)
+        }
+        jsonlite::fromJSON(res_pagina)
+      }, error = function(e) {
+        message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
+        # For debugging
+        message(paste0(pattern, "Primeiros 100 caracteres da resposta: ", substr(as.character(res_pagina), 1, 100)))
+        return(NULL)
+      })
+        
+      if(is.null(conteudo_pagina)) {
+        message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
+        return(NULL)
+      }
+
+      # Check if the page response contains an error field
+      if (!is.null(conteudo_pagina$error)) {
+          message(paste0(pattern, "Aviso: Erro retornado pela API do TJRS ao buscar página ", pagina_atual, ". Detalhes: ", conteudo_pagina$error,". Pulando esta página."))
+          return(NULL)
+      }
+
+      # Check for expected response structure on the page
+      if (is.null(conteudo_pagina$response) || is.null(conteudo_pagina$response$docs)) {
+           message(paste0(pattern, "Aviso: Estrutura de resposta inesperada da API do TJRS na página ", pagina_atual, ". Pulando esta página."))
+           return(NULL)
+      }
+
+      return(conteudo_pagina$response$docs)
+    }, purrr::rate_delay(as.integer(delay))))
+  )
 
   # Filter out NULL entries from failed page requests
   lista_docs <- Filter(Negate(is.null), lista_docs)
