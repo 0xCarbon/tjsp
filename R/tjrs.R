@@ -96,8 +96,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       ssl_verifypeer = FALSE,
       accept_encoding = "latin1", # Keep encoding setting if needed
       timeout = as.integer(timeout_seconds), # Ensure it's integer
-      proxy = use_proxy(url = proxy_hostname, port = proxy_port, username = proxy_username, password = proxy_password),
-      user_agent = user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
+      proxy = httr::use_proxy(url = proxy_hostname, port = proxy_port, username = proxy_username, password = proxy_password),
+      user_agent = httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
   )
 
   res <- httr::POST(
