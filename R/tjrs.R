@@ -57,6 +57,18 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
   conteudo <- httr::content(res, as = "text") |> jsonlite::fromJSON()
 
+  # Check if the response itself contains an error field
+  if (!is.null(conteudo$error)) {
+    message(paste0(pattern, "Erro retornado pela API do TJRS na consulta inicial. Detalhes: ", conteudo$error)) # Log API error
+    return(NULL)
+  }
+
+  # Check for response structure validity (optional but good practice)
+  if (is.null(conteudo$response) || is.null(conteudo$response$numFound)) {
+     message(paste0(pattern, "Estrutura de resposta inesperada da API do TJRS na consulta inicial."))
+     return(NULL)
+  }
+
   total_resultados <- conteudo$response$numFound
   if (is.null(total_resultados) || total_resultados == 0) { # Check explicitly for 0 results too
     message(paste0(pattern, "Nenhuma decisao encontrada para os critérios informados.")) # Log no results
@@ -94,6 +106,18 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     }
 
     conteudo_pagina <- httr::content(res_pagina, as = "text") |> jsonlite::fromJSON() # Renamed variable
+
+    # Check if the page response contains an error field
+    if (!is.null(conteudo_pagina$error)) {
+        message(paste0(pattern, "Aviso: Erro retornado pela API do TJRS ao buscar página ", pagina_atual, ". Detalhes: ", conteudo_pagina$error,". Pulando esta página."))
+        return(NULL) # Return NULL for this page if it has an API error
+    }
+
+    # Check for expected response structure on the page
+    if (is.null(conteudo_pagina$response) || is.null(conteudo_pagina$response$docs)) {
+         message(paste0(pattern, "Aviso: Estrutura de resposta inesperada da API do TJRS na página ", pagina_atual, ". Pulando esta página."))
+         return(NULL) # Return NULL if structure is unexpected
+    }
 
     return(conteudo_pagina$response$docs)
   }, purrr::rate_delay(delay)))
