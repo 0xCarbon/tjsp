@@ -4,12 +4,14 @@
 \alias{tjrs_jurisprudencia}
 \title{Buscar jurisprudência no Tribunal de Justiça do RS}
 \usage{
-tjrs_jurisprudencia(julgamento_inicial = "", julgamento_final = "")
+tjrs_jurisprudencia(julgamento_inicial = "", julgamento_final = "", delay = 5)
 }
 \arguments{
 \item{julgamento_inicial}{Data de julgamento inicial das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data inicial.}
 
 \item{julgamento_final}{Data de julgamento final das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data final.}
+
+\item{delay}{Tempo de espera em segundos entre as requisições. O padrão é 5 segundos.}
 }
 \value{
 Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
