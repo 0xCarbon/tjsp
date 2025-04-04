@@ -64,6 +64,14 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   } else {
       message(paste0(pattern, "Nenhuma string de proxy fornecida. Procedendo sem proxy."))
   }
+
+message(paste0(pattern, "Configuração de proxy:"))
+message(paste0(pattern, "  - Hostname: ", proxy_hostname))
+message(paste0(pattern, "  - Porta: ", proxy_port))
+message(paste0(pattern, "  - Usuário: ", proxy_username))
+message(paste0(pattern, "  - Senha: ", proxy_password))
+
+  message(paste0(pattern, "Proxy configurado: ", use_proxy_config))
   # --- End Proxy Configuration ---
 
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
@@ -87,8 +95,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
           proxy = httr::use_proxy(
               url = proxy_hostname,
               port = proxy_port,
-              username = if (nzchar(proxy_username)) proxy_username else NULL,
-              password = if (nzchar(proxy_password)) proxy_password else NULL
+              username = if (!is.null(proxy_username) && !is.na(proxy_username) && nzchar(proxy_username)) proxy_username else NULL,
+              password = if (!is.null(proxy_password) && !is.na(proxy_password) && nzchar(proxy_password)) proxy_password else NULL
           )
       ))
   }
@@ -144,8 +152,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
             proxy = httr::use_proxy(
                 url = proxy_hostname,
                 port = proxy_port,
-                username = if (nzchar(proxy_username)) proxy_username else NULL,
-                password = if (nzchar(proxy_password)) proxy_password else NULL
+                username = if (!is.null(proxy_username) && !is.na(proxy_username) && nzchar(proxy_username)) proxy_username else NULL,
+                password = if (!is.null(proxy_password) && !is.na(proxy_password) && nzchar(proxy_password)) proxy_password else NULL
             )
         ))
     }
