@@ -98,7 +98,11 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
     followlocation = TRUE,
     encoding = "latin1",
-    cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")
+    cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl"),
+    httpheader = c(
+      "Accept" = "application/json",
+      "Content-Type" = "application/x-www-form-urlencoded"
+    ),
   )
   
   # Add proxy configuration if needed
@@ -136,13 +140,17 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     return(NULL)
   }
 
-  message(res)
-
-  # Parse JSON response
+  # Parse JSON response directly (remove hex decoding)
   conteudo <- tryCatch({
+    # Convert raw bytes to character string if needed
+    if(is.raw(res)) {
+      res <- rawToChar(res)
+    }
     jsonlite::fromJSON(res)
   }, error = function(e) {
     message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
+    # For debugging
+    message(paste0(pattern, "Primeiros 100 caracteres da resposta: ", substr(as.character(res), 1, 100)))
     return(NULL)
   })
   
