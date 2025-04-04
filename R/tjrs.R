@@ -6,7 +6,7 @@
 #' @param julgamento_final Data de julgamento final das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data final.
 #' @param delay Tempo de espera em segundos entre as requisições. O padrão é 5 segundos.
 #' @param timeout_seconds Tempo máximo em segundos para esperar por uma resposta da requisição. O padrão é 60 segundos.
-#' @param proxy_string String de conexão do proxy opcional (formato: "http://user:pass@host:port" ou "http://host:port"). Se fornecida, será usada para as requisições. O padrão é NULL (sem proxy).
+#' @param proxy_config Lista opcional contendo os detalhes da configuração do proxy. Deve conter os seguintes elementos nomeados: \code{hostname} (string), \code{port} (inteiro), \code{username} (string, opcional), \code{password} (string, opcional). O padrão é \code{NULL} (sem proxy).
 #' @return Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
 #'
 #' @importFrom glue glue
@@ -14,7 +14,6 @@
 #' @importFrom purrr map list_flatten rate_delay slowly
 #' @importFrom httr POST content user_agent config timeout use_proxy
 #' @importFrom curl curl_escape
-#' @importFrom urltools url_parse
 #'
 #' @export
 #'
@@ -26,8 +25,21 @@
 #'
 #' # Caso ele não encontre nada, mostrará e um aviso e retornará um valor NULL
 #' tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
+#'
+#' # Exemplo com proxy (substitua pelos seus detalhes)
+#' proxy_details <- list(
+#'   hostname = "your_proxy_host",
+#'   port = 8080,
+#'   username = "your_proxy_user", # Opcional
+#'   password = "your_proxy_password" # Opcional
+#' )
+#' tjrs_with_proxy <- tjrs_jurisprudencia(
+#'   julgamento_inicial = "01/01/2023",
+#'   julgamento_final = "31/01/2023",
+#'   proxy_config = proxy_details
+#' )
 #' }
-tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5, timeout_seconds = 60, proxy_string = NULL) {
+tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5, timeout_seconds = 60, proxy_config = NULL) {
   # Create log pattern
   pattern <- glue::glue("[{julgamento_inicial}-{julgamento_final}] ")
 
@@ -40,36 +52,34 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   proxy_password <- NULL
   use_proxy_config <- FALSE
 
-  # --- Check for Proxy String Parameter ---
-  if (!is.null(proxy_string) && nzchar(proxy_string)) {
-      message(paste0(pattern, "Tentando usar configuração de proxy da string fornecida..."))
-      tryCatch({
-          # Parse the proxy URL
-          parsed_url <- urltools::url_parse(proxy_string)
+  # --- Check for Proxy Config Parameter ---
+  if (!is.null(proxy_config)) {
+    message(paste0(pattern, "Tentando usar configuração de proxy fornecida..."))
+    if (is.list(proxy_config) &&
+        !is.null(proxy_config$hostname) && nzchar(proxy_config$hostname) &&
+        !is.null(proxy_config$port) && is.numeric(proxy_config$port) && proxy_config$port > 0) {
 
-          proxy_hostname <- parsed_url$domain
-          proxy_port     <- as.integer(parsed_url$port)
-          proxy_username <- parsed_url$user
-          proxy_password <- parsed_url$password
+      proxy_hostname <- proxy_config$hostname
+      proxy_port     <- as.integer(proxy_config$port)
+      # Use $username and $password directly, they will be NULL if not present in the list
+      proxy_username <- proxy_config$username
+      proxy_password <- proxy_config$password
 
-          if (!is.null(proxy_hostname) && nzchar(proxy_hostname) && !is.na(proxy_port) && proxy_port > 0) {
-              use_proxy_config <- TRUE
-              message(paste0(pattern, "Usando proxy da string: ", proxy_hostname, ":", proxy_port))
-          } else {
-              warning(paste0(pattern, "String de proxy fornecida ('", proxy_string, "') não pôde ser completamente parseada ou está inválida. Procedendo sem proxy."))
-          }
-      }, error = function(e) {
-          warning(paste0(pattern, "Erro ao parsear a string de proxy '", proxy_string, "': ", e$message, ". Procedendo sem proxy."))
-      })
+      use_proxy_config <- TRUE
+      message(paste0(pattern, "Usando proxy da configuração: ", proxy_hostname, ":", proxy_port))
+
+    } else {
+      warning(paste0(pattern, "Configuração de proxy fornecida está incompleta ou inválida. Deve ser uma lista com 'hostname' (string não vazia) e 'port' (inteiro > 0). Procedendo sem proxy."))
+    }
   } else {
-      message(paste0(pattern, "Nenhuma string de proxy fornecida. Procedendo sem proxy."))
+      message(paste0(pattern, "Nenhuma configuração de proxy fornecida. Procedendo sem proxy."))
   }
 
-message(paste0(pattern, "Configuração de proxy:"))
-message(paste0(pattern, "  - Hostname: ", proxy_hostname))
-message(paste0(pattern, "  - Porta: ", proxy_port))
-message(paste0(pattern, "  - Usuário: ", proxy_username))
-message(paste0(pattern, "  - Senha: ", proxy_password))
+  message(paste0(pattern, "Configuração de proxy:"))
+  message(paste0(pattern, "  - Hostname: ", if(is.null(proxy_hostname)) "N/A" else proxy_hostname))
+  message(paste0(pattern, "  - Porta: ", if(is.null(proxy_port)) "N/A" else proxy_port))
+  message(paste0(pattern, "  - Usuário: ", if(is.null(proxy_username) || !nzchar(proxy_username)) "N/A" else proxy_username))
+  message(paste0(pattern, "  - Senha: ", if(is.null(proxy_password) || !nzchar(proxy_password)) "N/A" else "****")) # Mask password in log
 
   message(paste0(pattern, "Proxy configurado: ", use_proxy_config))
   # --- End Proxy Configuration ---

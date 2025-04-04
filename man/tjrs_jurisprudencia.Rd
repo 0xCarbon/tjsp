@@ -9,7 +9,7 @@ tjrs_jurisprudencia(
   julgamento_final = "",
   delay = 5,
   timeout_seconds = 60,
-  proxy_string = NULL
+  proxy_config = NULL
 )
 }
 \arguments{
@@ -21,7 +21,7 @@ tjrs_jurisprudencia(
 
 \item{timeout_seconds}{Tempo máximo em segundos para esperar por uma resposta da requisição. O padrão é 60 segundos.}
 
-\item{proxy_string}{String de conexão do proxy opcional (formato: "http://user:pass@host:port" ou "http://host:port"). Se fornecida, será usada para as requisições. O padrão é NULL (sem proxy).}
+\item{proxy_config}{Lista opcional contendo os detalhes da configuração do proxy. Deve conter os seguintes elementos nomeados: \code{hostname} (string), \code{port} (inteiro), \code{username} (string, opcional), \code{password} (string, opcional). O padrão é \code{NULL} (sem proxy).}
 }
 \value{
 Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
@@ -37,5 +37,18 @@ tjrs |> head(5)
 
 # Caso ele não encontre nada, mostrará e um aviso e retornará um valor NULL
 tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
+
+# Exemplo com proxy (substitua pelos seus detalhes)
+proxy_details <- list(
+  hostname = "your_proxy_host",
+  port = 8080,
+  username = "your_proxy_user", # Opcional
+  password = "your_proxy_password" # Opcional
+)
+tjrs_with_proxy <- tjrs_jurisprudencia(
+  julgamento_inicial = "01/01/2023",
+  julgamento_final = "31/01/2023",
+  proxy_config = proxy_details
+)
 }
 }
