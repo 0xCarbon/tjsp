@@ -91,17 +91,14 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
   message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
 
-  # --- Create initial config list ---
-  initial_config_list <- httr::config(
-      ssl_verifypeer = FALSE,
-      accept_encoding = "latin1", # Keep encoding setting if needed
-      timeout = as.integer(timeout_seconds), # Ensure it's integer
-  )
-
   res <- httr::POST(
     url = url,
     body = parametros,
-    config = initial_config_list,
+    config = httr::config(
+      ssl_verifypeer = FALSE,
+      accept_encoding = "latin1", # Keep encoding setting if needed
+      timeout = as.integer(timeout_seconds), # Ensure it's integer
+    ),
     httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
     httr::use_proxy(url = proxy_hostname, port = proxy_port, username = proxy_username, password = proxy_password)
   )
@@ -151,7 +148,11 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     res_pagina <- httr::POST( # Renamed variable to avoid conflict
       url = url,
       body = parametros,
-      config = initial_config_list,
+      config = httr::config(
+        ssl_verifypeer = FALSE,
+        accept_encoding = "latin1", # Keep encoding setting if needed
+        timeout = as.integer(timeout_seconds), # Ensure it's integer
+      ),
       httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
       httr::use_proxy(url = proxy_hostname, port = proxy_port, username = proxy_username, password = proxy_password)
     )
