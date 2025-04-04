@@ -95,7 +95,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   http_config <- httr::config(
     ssl_verifypeer = FALSE,
     accept_encoding = "latin1",
-    timeout = as.integer(timeout_seconds)
+    timeout = as.integer(timeout_seconds),
     cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")
   )
   
