@@ -72,7 +72,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   total_resultados <- conteudo$response$numFound
   if (is.null(total_resultados) || total_resultados == 0) { # Check explicitly for 0 results too
     message(paste0(pattern, "Nenhuma decisao encontrada para os critérios informados.")) # Log no results
-    return(NULL)
+    return(jsonlite::toJSON(list(), auto_unbox = TRUE))
   }
 
   n_paginas <- ceiling(total_resultados / 10)
