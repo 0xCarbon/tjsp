@@ -54,7 +54,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
   # --- Check for Proxy Config Parameter ---
   if (!is.null(proxy_config)) {
-    message(paste0(pattern, "Tentando usar configuração de proxy fornecida..."))
     if (is.list(proxy_config) &&
         !is.null(proxy_config$hostname) && nzchar(proxy_config$hostname) &&
         !is.null(proxy_config$port) && is.numeric(proxy_config$port) && proxy_config$port > 0) {
@@ -75,7 +74,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       message(paste0(pattern, "Nenhuma configuração de proxy fornecida. Procedendo sem proxy."))
   }
 
-  message(paste0(pattern, "Proxy configurado: ", use_proxy_config))
+  message(paste0(pattern, "Usando proxy da configuração: ", proxy_hostname, ":", proxy_port))
   # --- End Proxy Configuration ---
 
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
@@ -89,8 +88,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     "metodo" = "buscar_resultados",
     "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual=1&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
   )
-
-  message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
 
   # Create curl options
   curl_options <- RCurl::curlOptions(
@@ -109,15 +106,12 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   # Add proxy configuration if needed
   if (use_proxy_config) {
     proxy_url <- paste0(proxy_hostname, ":", proxy_port)
-    message(paste0(pattern, "Configurando proxy: ", proxy_url))
-    
     # Add proxy to curl options
     curl_options$proxy <- proxy_url
     
     # Handle authentication if credentials are provided
     if (!is.null(proxy_username) && !is.null(proxy_password) && 
         nzchar(proxy_username) && nzchar(proxy_password)) {
-      message(paste0(pattern, "Configurando proxy com autenticação"))
       curl_options$proxyuserpwd <- paste0(proxy_username, ":", proxy_password)
     }
   }
