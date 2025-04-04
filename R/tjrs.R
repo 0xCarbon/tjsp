@@ -36,7 +36,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   res <- httr::POST(
     url = url,
     httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
-    body = parametros
+    body = parametros,
+    httr::config(ssl_verifypeer = FALSE)
   )
 
   if(res$status_code != 200){
@@ -67,7 +68,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     res <- httr::POST(
       url = url,
       httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
-      body = parametros
+      body = parametros,
+      httr::config(ssl_verifypeer = FALSE)
     )
 
     conteudo <- httr::content(res, as = "text") |> jsonlite::fromJSON()
