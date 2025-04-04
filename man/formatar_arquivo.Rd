@@ -4,7 +4,7 @@
 \alias{formatar_arquivo}
 \title{Função para criar o nome do arquivo}
 \usage{
-formatar_arquivo(inicio, fim, inicio_pb, fim_pb, pagina, diretorio)
+formatar_arquivo(inicio, fim, inicio_pb, fim_pb, tipo, pagina, diretorio)
 }
 \arguments{
 \item{inicio}{data inicial julgamento}
@@ -14,6 +14,8 @@ formatar_arquivo(inicio, fim, inicio_pb, fim_pb, pagina, diretorio)
 \item{inicio_pb}{data inicial registro/publicação}
 
 \item{fim_pb}{data final registr/publicacao}
+
+\item{tipo}{tipo de busca}
 
 \item{pagina}{página}
 
