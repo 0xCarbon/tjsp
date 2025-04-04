@@ -100,22 +100,46 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   
   # Add proxy configuration to the config object if needed
   if (use_proxy_config) {
-    http_config <- httr::with_config(
-      http_config,
-      httr::use_proxy(url = proxy_hostname, port = proxy_port, 
-                     username = proxy_username, password = proxy_password)
+    # Use httr::set_config instead of with_config for global proxy settings
+    http_config <- httr::config(
+      ssl_verifypeer = FALSE,
+      accept_encoding = "latin1",
+      timeout = as.integer(timeout_seconds),
+      proxy = httr::use_proxy(
+        url = proxy_hostname, 
+        port = proxy_port,
+        username = proxy_username, 
+        password = proxy_password,
+        auth = "any" # Add explicit authentication method
+      ),
+      followlocation = TRUE, # Allow redirects
+      cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl") # Use the certificate bundle from RCurl
     )
+    # Add message for debugging
+    message(paste0(pattern, "Configurado proxy completo com SSL verification desativado"))
   }
 
-  res <- httr::POST(
-    url = url,
-    body = parametros,
-    config = http_config,
-    httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
-  )
+  # Wrap the POST request in tryCatch to better handle errors
+  res <- tryCatch({
+    httr::POST(
+      url = url,
+      body = parametros,
+      config = http_config,
+      httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
+    )
+  }, error = function(e) {
+    message(paste0(pattern, "Erro ao realizar requisição: ", e$message))
+    return(NULL)
+  })
+  
+  # Check if the request returned NULL (error occurred)
+  if(is.null(res)) {
+    message(paste0(pattern, "Falha na conexão com o portal de jurisprudência do TJRS."))
+    return(NULL)
+  }
 
   if(res$status_code != 200){
-    message(paste0(pattern, "Erro ", res$status_code, " ao acessar o portal de jurisprudencia do TJRS na consulta inicial.")) # Log error with status code
+    message(paste0(pattern, "Erro ", res$status_code, " ao acessar o portal de jurisprudencia do TJRS na consulta inicial."))
     return(NULL)
   }
 
@@ -156,12 +180,17 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
     )
 
-    res_pagina <- httr::POST(
-      url = url,
-      body = parametros,
-      config = http_config,
-      httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
-    )
+    res_pagina <- tryCatch({
+      httr::POST(
+        url = url,
+        body = parametros,
+        config = http_config,
+        httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
+      )
+    }, error = function(e) {
+      message(paste0(pattern, "Erro ao realizar requisição: ", e$message))
+      return(NULL)
+    })
 
     # Optional: Add basic check for page request status
     if(res_pagina$status_code != 200){
