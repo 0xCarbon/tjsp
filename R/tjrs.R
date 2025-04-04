@@ -12,7 +12,7 @@
 #' @importFrom glue glue
 #' @importFrom jsonlite toJSON fromJSON
 #' @importFrom purrr map list_flatten rate_delay slowly
-#' @importFrom httr POST content user_agent config timeout use_proxy set_config with_config
+#' @importFrom RCurl postForm curlOptions getURL getCurlHandle curlSetOpt curlEscape
 #'
 #' @export
 #'
@@ -85,8 +85,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
   pagina <- 1
-  dt_julgamento_de <- URLencode(julgamento_inicial)
-  dt_julgamento_ate <- URLencode(julgamento_final)
+  dt_julgamento_de <- RCurl::curlEscape(julgamento_inicial)
+  dt_julgamento_ate <- RCurl::curlEscape(julgamento_final)
 
   parametros <- list(
     "action" = "consultas_solr_ajax",
@@ -96,52 +96,39 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
   message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
 
-  # Create a base config object first
-  http_config <- httr::config(
-    ssl_verifypeer = FALSE,
-    accept_encoding = "latin1",
+  # Create curl options
+  curl_options <- RCurl::curlOptions(
+    ssl.verifypeer = FALSE,
     timeout = as.integer(timeout_seconds),
+    useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
+    followlocation = TRUE,
+    encoding = "latin1",
     cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")
   )
   
-  # Add proxy configuration separately if needed
+  # Add proxy configuration if needed
   if (use_proxy_config) {
-    # Create proxy configuration correctly
     proxy_url <- paste0(proxy_hostname, ":", proxy_port)
+    message(paste0(pattern, "Configurando proxy: ", proxy_url))
+    
+    # Add proxy to curl options
+    curl_options$proxy <- proxy_url
     
     # Handle authentication if credentials are provided
     if (!is.null(proxy_username) && !is.null(proxy_password) && 
         nzchar(proxy_username) && nzchar(proxy_password)) {
-      proxy_auth <- httr::authenticate(proxy_username, proxy_password, type = "basic")
       message(paste0(pattern, "Configurando proxy com autenticação"))
-      
-      # Set proxy with authentication
-      http_config <- httr::config(
-        proxy = proxy_url,
-        followlocation = TRUE
-      )
-      
-      # Apply both configs together
-      http_config <- c(http_config, proxy_auth)
-    } else {
-      # Set proxy without authentication
-      message(paste0(pattern, "Configurando proxy sem autenticação"))
-      http_config <- httr::config(
-        proxy = proxy_url,
-        followlocation = TRUE
-      )
+      curl_options$proxyuserpwd <- paste0(proxy_username, ":", proxy_password)
     }
-    
-    message(paste0(pattern, "Proxy configurado: ", proxy_url))
   }
 
   # Wrap the POST request in tryCatch to better handle errors
   res <- tryCatch({
-    httr::POST(
-      url = url,
-      body = parametros,
-      config = http_config,
-      httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
+    RCurl::postForm(
+      uri = url,
+      .params = parametros,
+      .opts = curl_options,
+      style = "post"
     )
   }, error = function(e) {
     message(paste0(pattern, "Erro ao realizar requisição: ", e$message))
@@ -154,12 +141,18 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     return(NULL)
   }
 
-  if(res$status_code != 200){
-    message(paste0(pattern, "Erro ", res$status_code, " ao acessar o portal de jurisprudencia do TJRS na consulta inicial."))
+  # Parse JSON response
+  conteudo <- tryCatch({
+    jsonlite::fromJSON(res)
+  }, error = function(e) {
+    message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
+    return(NULL)
+  })
+  
+  if(is.null(conteudo)) {
+    message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
     return(NULL)
   }
-
-  conteudo <- httr::content(res, as = "text") |> jsonlite::fromJSON()
 
   # Check if the response itself contains an error field
   if (!is.null(conteudo$error)) {
@@ -167,69 +160,72 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     return(NULL)
   }
 
-  # Check for response structure validity (optional but good practice)
+  # Check for response structure validity
   if (is.null(conteudo$response) || is.null(conteudo$response$numFound)) {
      message(paste0(pattern, "Estrutura de resposta inesperada da API do TJRS na consulta inicial."))
      return(NULL)
   }
 
   total_resultados <- conteudo$response$numFound
-  if (is.null(total_resultados) || total_resultados == 0) { # Check explicitly for 0 results too
-    message(paste0(pattern, "Nenhuma decisao encontrada para os critérios informados.")) # Log no results
+  if (is.null(total_resultados) || total_resultados == 0) {
+    message(paste0(pattern, "Nenhuma decisao encontrada para os critérios informados."))
     return(jsonlite::toJSON(list(), auto_unbox = TRUE))
   }
 
   n_paginas <- ceiling(total_resultados / 10)
   message(paste0(pattern, "Total de resultados encontrados: ", total_resultados))
-  message(paste0(pattern, "Número total de páginas a serem baixadas: ", n_paginas)) # Log total pages
+  message(paste0(pattern, "Número total de páginas a serem baixadas: ", n_paginas))
 
   # Use map to get a list of lists (each inner list is the 'docs' from a page)
   lista_docs <- purrr::map(1:n_paginas, purrr::slowly(~ {
     pagina_atual <- .x
-    message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "...")) # Log page download progress
+    message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "..."))
 
-    url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
-
-    parametros <- list(
+    parametros_pagina <- list(
       "action" = "consultas_solr_ajax",
       "metodo" = "buscar_resultados",
       "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
     )
 
     res_pagina <- tryCatch({
-      httr::POST(
-        url = url,
-        body = parametros,
-        config = http_config,
-        httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
+      RCurl::postForm(
+        uri = url,
+        .params = parametros_pagina,
+        .opts = curl_options,
+        style = "post"
       )
     }, error = function(e) {
-      message(paste0(pattern, "Erro ao realizar requisição: ", e$message))
+      message(paste0(pattern, "Erro ao realizar requisição para página ", pagina_atual, ": ", e$message))
       return(NULL)
     })
 
-    # Optional: Add basic check for page request status
-    if(res_pagina$status_code != 200){
-       message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, " (Status: ", res_pagina$status_code, "). Pulando esta página."))
-       return(NULL) # Return NULL for this page if it fails
+    if(is.null(res_pagina)) {
+      message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, ". Pulando esta página."))
+      return(NULL)
     }
 
-    conteudo_pagina <- httr::content(res_pagina, as = "text") |> jsonlite::fromJSON() # Renamed variable
+    # Parse JSON response
+    conteudo_pagina <- tryCatch({
+      jsonlite::fromJSON(res_pagina)
+    }, error = function(e) {
+      message(paste0(pattern, "Erro ao analisar a resposta JSON da página ", pagina_atual, ": ", e$message))
+      return(NULL)
+    })
 
     # Check if the page response contains an error field
     if (!is.null(conteudo_pagina$error)) {
         message(paste0(pattern, "Aviso: Erro retornado pela API do TJRS ao buscar página ", pagina_atual, ". Detalhes: ", conteudo_pagina$error,". Pulando esta página."))
-        return(NULL) # Return NULL for this page if it has an API error
+        return(NULL)
     }
 
     # Check for expected response structure on the page
     if (is.null(conteudo_pagina$response) || is.null(conteudo_pagina$response$docs)) {
          message(paste0(pattern, "Aviso: Estrutura de resposta inesperada da API do TJRS na página ", pagina_atual, ". Pulando esta página."))
-         return(NULL) # Return NULL if structure is unexpected
+         return(NULL)
     }
 
     return(conteudo_pagina$response$docs)
-  }, purrr::rate_delay(as.integer(delay)))) # Ensure delay is integer for rate_delay
+  }, purrr::rate_delay(as.integer(delay))))
 
   # Filter out NULL entries from failed page requests
   lista_docs <- Filter(Negate(is.null), lista_docs)
@@ -245,6 +241,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   # Convert the combined list to a JSON string
   json_output <- jsonlite::toJSON(docs_combinados, auto_unbox = TRUE)
 
-  message(paste0(pattern, "Busca de jurisprudência no TJRS concluída.")) # Log completion
+  message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
   return(json_output)
 }
