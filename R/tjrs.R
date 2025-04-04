@@ -5,13 +5,16 @@
 #' @param julgamento_inicial Data de julgamento inicial das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data inicial.
 #' @param julgamento_final Data de julgamento final das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data final.
 #' @param delay Tempo de espera em segundos entre as requisições. O padrão é 5 segundos.
+#' @param timeout_seconds Tempo máximo em segundos para esperar por uma resposta da requisição. O padrão é 60 segundos.
+#' @param proxy_string String de conexão do proxy opcional (formato: "http://user:pass@host:port" ou "http://host:port"). Se fornecida, será usada para as requisições. O padrão é NULL (sem proxy).
 #' @return Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
 #'
 #' @importFrom glue glue
 #' @importFrom jsonlite toJSON fromJSON
 #' @importFrom purrr map list_flatten rate_delay slowly
-#' @importFrom httr POST content user_agent config
+#' @importFrom httr POST content user_agent config timeout use_proxy
 #' @importFrom curl curl_escape
+#' @importFrom urltools url_parse
 #'
 #' @export
 #'
@@ -24,11 +27,44 @@
 #' # Caso ele não encontre nada, mostrará e um aviso e retornará um valor NULL
 #' tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
 #' }
-tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5) {
+tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5, timeout_seconds = 60, proxy_string = NULL) {
   # Create log pattern
   pattern <- glue::glue("[{julgamento_inicial}-{julgamento_final}] ")
 
   message(paste0(pattern, "Iniciando busca de jurisprudência no TJRS...")) # Log start
+
+  # --- Initialize Proxy Variables ---
+  proxy_hostname <- NULL
+  proxy_port     <- NULL
+  proxy_username <- NULL
+  proxy_password <- NULL
+  use_proxy_config <- FALSE
+
+  # --- Check for Proxy String Parameter ---
+  if (!is.null(proxy_string) && nzchar(proxy_string)) {
+      message(paste0(pattern, "Tentando usar configuração de proxy da string fornecida..."))
+      tryCatch({
+          # Parse the proxy URL
+          parsed_url <- urltools::url_parse(proxy_string)
+
+          proxy_hostname <- parsed_url$domain
+          proxy_port     <- as.integer(parsed_url$port)
+          proxy_username <- parsed_url$user
+          proxy_password <- parsed_url$password
+
+          if (!is.null(proxy_hostname) && nzchar(proxy_hostname) && !is.na(proxy_port) && proxy_port > 0) {
+              use_proxy_config <- TRUE
+              message(paste0(pattern, "Usando proxy da string: ", proxy_hostname, ":", proxy_port))
+          } else {
+              warning(paste0(pattern, "String de proxy fornecida ('", proxy_string, "') não pôde ser completamente parseada ou está inválida. Procedendo sem proxy."))
+          }
+      }, error = function(e) {
+          warning(paste0(pattern, "Erro ao parsear a string de proxy '", proxy_string, "': ", e$message, ". Procedendo sem proxy."))
+      })
+  } else {
+      message(paste0(pattern, "Nenhuma string de proxy fornecida. Procedendo sem proxy."))
+  }
+  # --- End Proxy Configuration ---
 
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
@@ -43,11 +79,26 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   )
 
   message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
+
+  # --- Create initial config list ---
+  initial_config <- list(ssl_verifypeer = FALSE, timeout = httr::timeout(timeout_seconds))
+  if (use_proxy_config) {
+      initial_config <- c(initial_config, list(
+          proxy = httr::use_proxy(
+              url = proxy_hostname,
+              port = proxy_port,
+              username = if (nzchar(proxy_username)) proxy_username else NULL,
+              password = if (nzchar(proxy_password)) proxy_password else NULL
+          )
+      ))
+  }
+  # --- End initial config list ---
+
   res <- httr::POST(
     url = url,
     httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
     body = parametros,
-    httr::config(ssl_verifypeer = FALSE)
+    httr::config(!!!initial_config) # Apply the config list
   )
 
   if(res$status_code != 200){
@@ -86,6 +137,20 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
     url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
+    # --- Create page config list ---
+    page_config <- list(ssl_verifypeer = FALSE, timeout = httr::timeout(timeout_seconds))
+    if (use_proxy_config) {
+        page_config <- c(page_config, list(
+            proxy = httr::use_proxy(
+                url = proxy_hostname,
+                port = proxy_port,
+                username = if (nzchar(proxy_username)) proxy_username else NULL,
+                password = if (nzchar(proxy_password)) proxy_password else NULL
+            )
+        ))
+    }
+    # --- End page config list ---
+
     parametros <- list(
       "action" = "consultas_solr_ajax",
       "metodo" = "buscar_resultados",
@@ -96,7 +161,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       url = url,
       httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
       body = parametros,
-      httr::config(ssl_verifypeer = FALSE)
+      httr::config(!!!page_config) # Apply the config list
     )
 
     # Optional: Add basic check for page request status
