@@ -9,7 +9,8 @@ tjrs_jurisprudencia(
   julgamento_final = "",
   delay = 5,
   timeout_seconds = 60,
-  proxy_config = NULL
+  proxy_config = NULL,
+  max_retries = 3
 )
 }
 \arguments{
@@ -22,6 +23,8 @@ tjrs_jurisprudencia(
 \item{timeout_seconds}{Tempo máximo em segundos para esperar por uma resposta da requisição. O padrão é 60 segundos.}
 
 \item{proxy_config}{Lista opcional contendo os detalhes da configuração do proxy. Deve conter os seguintes elementos nomeados: \code{hostname} (string), \code{port} (inteiro), \code{username} (string, opcional), \code{password} (string, opcional). O padrão é \code{NULL} (sem proxy).}
+
+\item{max_retries}{Número máximo de tentativas para cada requisição em caso de falha. O padrão é 3 tentativas.}
 }
 \value{
 Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).

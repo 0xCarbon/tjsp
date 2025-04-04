@@ -7,6 +7,7 @@
 #' @param delay Tempo de espera em segundos entre as requisições. O padrão é 5 segundos.
 #' @param timeout_seconds Tempo máximo em segundos para esperar por uma resposta da requisição. O padrão é 60 segundos.
 #' @param proxy_config Lista opcional contendo os detalhes da configuração do proxy. Deve conter os seguintes elementos nomeados: \code{hostname} (string), \code{port} (inteiro), \code{username} (string, opcional), \code{password} (string, opcional). O padrão é \code{NULL} (sem proxy).
+#' @param max_retries Número máximo de tentativas para cada requisição em caso de falha. O padrão é 3 tentativas.
 #' @return Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
 #'
 #' @importFrom glue glue
@@ -38,7 +39,7 @@
 #'   proxy_config = proxy_details
 #' )
 #' }
-tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5, timeout_seconds = 60, proxy_config = NULL) {
+tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5, timeout_seconds = 60, proxy_config = NULL, max_retries = 3) {
   # Create log pattern
   pattern <- glue::glue("[{julgamento_inicial}-{julgamento_final}] ")
 
@@ -121,22 +122,38 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     }
   }
 
-  # Wrap the POST request in tryCatch to better handle errors
-  res <- tryCatch({
-    RCurl::postForm(
-      uri = url,
-      .params = parametros,
-      .opts = curl_options,
-      style = "post"
-    )
-  }, error = function(e) {
-    message(paste0(pattern, "Erro ao realizar requisição: ", e$message))
-    return(NULL)
-  })
+  # Helper function for requests with retry and exponential backoff
+  fazer_requisicao_com_retry <- function(url, parametros, opcoes, tentativa = 1) {
+    if (tentativa > max_retries) {
+      message(paste0(pattern, "Excedido o número máximo de tentativas (", max_retries, "). Desistindo."))
+      return(NULL)
+    }
+    
+    if (tentativa > 1) {
+      backoff_delay <- delay * 2^(tentativa - 2)  # Exponential backoff (delay, delay*2, delay*4, ...)
+      message(paste0(pattern, "Tentativa ", tentativa, " de ", max_retries, ". Aguardando ", backoff_delay, " segundos..."))
+      Sys.sleep(backoff_delay)
+    }
+    
+    tryCatch({
+      RCurl::postForm(
+        uri = url,
+        .params = parametros,
+        .opts = opcoes,
+        style = "post"
+      )
+    }, error = function(e) {
+      message(paste0(pattern, "Erro na tentativa ", tentativa, ": ", e$message))
+      fazer_requisicao_com_retry(url, parametros, opcoes, tentativa + 1)
+    })
+  }
+
+  # Wrap the POST request with retry logic
+  res <- fazer_requisicao_com_retry(url, parametros, curl_options)
   
   # Check if the request returned NULL (error occurred)
   if(is.null(res)) {
-    message(paste0(pattern, "Falha na conexão com o portal de jurisprudência do TJRS."))
+    message(paste0(pattern, "Falha na conexão com o portal de jurisprudência do TJRS após ", max_retries, " tentativas."))
     return(NULL)
   }
 
@@ -205,20 +222,11 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
         "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
       )
 
-      res_pagina <- tryCatch({
-        RCurl::postForm(
-          uri = url,
-          .params = parametros_pagina,
-          .opts = curl_options,
-          style = "post"
-        )
-      }, error = function(e) {
-        message(paste0(pattern, "Erro ao realizar requisição para página ", pagina_atual, ": ", e$message))
-        return(NULL)
-      })
+      # Use the retry function for page requests
+      res_pagina <- fazer_requisicao_com_retry(url, parametros_pagina, curl_options)
 
       if(is.null(res_pagina)) {
-        message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, ". Pulando esta página."))
+        message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, " após ", max_retries, " tentativas. Pulando esta página."))
         return(NULL)
       }
 
