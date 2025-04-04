@@ -12,7 +12,7 @@
 #' @importFrom glue glue
 #' @importFrom jsonlite toJSON fromJSON
 #' @importFrom purrr map list_flatten rate_delay slowly
-#' @importFrom httr POST content user_agent config timeout use_proxy set_config
+#' @importFrom httr POST content user_agent config timeout use_proxy set_config with_config
 #'
 #' @export
 #'
@@ -91,16 +91,27 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
   message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
 
+  # Create a single config object that includes all settings
+  http_config <- httr::config(
+    ssl_verifypeer = FALSE,
+    accept_encoding = "latin1",
+    timeout = as.integer(timeout_seconds)
+  )
+  
+  # Add proxy configuration to the config object if needed
+  if (use_proxy_config) {
+    http_config <- httr::with_config(
+      http_config,
+      httr::use_proxy(url = proxy_hostname, port = proxy_port, 
+                     username = proxy_username, password = proxy_password)
+    )
+  }
+
   res <- httr::POST(
     url = url,
     body = parametros,
-    config = httr::config(
-      ssl_verifypeer = FALSE,
-      accept_encoding = "latin1", # Keep encoding setting if needed
-      timeout = as.integer(timeout_seconds), # Ensure it's integer
-    ),
-    httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
-    httr::use_proxy(url = proxy_hostname, port = proxy_port, username = proxy_username, password = proxy_password)
+    config = http_config,
+    httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
   )
 
   if(res$status_code != 200){
@@ -145,16 +156,11 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
     )
 
-    res_pagina <- httr::POST( # Renamed variable to avoid conflict
+    res_pagina <- httr::POST(
       url = url,
       body = parametros,
-      config = httr::config(
-        ssl_verifypeer = FALSE,
-        accept_encoding = "latin1", # Keep encoding setting if needed
-        timeout = as.integer(timeout_seconds), # Ensure it's integer
-      ),
-      httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
-      httr::use_proxy(url = proxy_hostname, port = proxy_port, username = proxy_username, password = proxy_password)
+      config = http_config,
+      httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
     )
 
     # Optional: Add basic check for page request status
