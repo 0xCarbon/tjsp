@@ -74,6 +74,11 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       message(paste0(pattern, "Nenhuma configuração de proxy fornecida. Procedendo sem proxy."))
   }
 
+  message(proxy_hostname)
+  message(proxy_port)
+  message(proxy_username)
+  message(proxy_password)
+
   message(paste0(pattern, "Proxy configurado: ", use_proxy_config))
   # --- End Proxy Configuration ---
 
