@@ -4,21 +4,15 @@
 \alias{tjrs_jurisprudencia}
 \title{Buscar jurisprudência no Tribunal de Justiça do RS}
 \usage{
-tjrs_jurisprudencia(
-  julgamento_inicial = "",
-  julgamento_final = "",
-  .reportar = TRUE
-)
+tjrs_jurisprudencia(julgamento_inicial = "", julgamento_final = "")
 }
 \arguments{
 \item{julgamento_inicial}{Data de julgamento inicial das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data inicial.}
 
 \item{julgamento_final}{Data de julgamento final das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data final.}
-
-\item{.reportar}{Se TRUE, exibe uma mensagem informando sobre os parâmetros da busca realizada. O padrão é TRUE.}
 }
 \value{
-Um data frame contendo informações sobre as decisões encontradas, incluindo número do processo, data do julgamento, relator, ementa e tribunal.
+Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
 }
 \description{
 Esta função permite buscar jurisprudência no Portal de Jurisprudência do Tribunal de Justiça do Estado do Rio Grande do Sul (TJRS) com base no período de julgamento.

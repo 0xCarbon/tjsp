@@ -4,10 +4,13 @@
 #'
 #' @param julgamento_inicial Data de julgamento inicial das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data inicial.
 #' @param julgamento_final Data de julgamento final das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data final.
-#' @param .reportar Se TRUE, exibe uma mensagem informando sobre os parâmetros da busca realizada. O padrão é TRUE.
-#' @return Um data frame contendo informações sobre as decisões encontradas, incluindo número do processo, data do julgamento, relator, ementa e tribunal.
+#' @return Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
 #'
 #' @importFrom glue glue
+#' @importFrom jsonlite toJSON fromJSON
+#' @importFrom purrr map list_flatten rate_delay slowly
+#' @importFrom httr POST content user_agent config
+#' @importFrom curl curl_escape
 #'
 #' @export
 #'
@@ -20,7 +23,9 @@
 #' # Caso ele não encontre nada, mostrará e um aviso e retornará um valor NULL
 #' tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
 #' }
-tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", .reportar = TRUE) {
+tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") {
+  message("Iniciando busca de jurisprudência no TJRS...") # Log start
+
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
   pagina <- 1
@@ -33,6 +38,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual=1&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
   )
 
+  message("Realizando consulta inicial para obter o número de páginas...")
   res <- httr::POST(
     url = url,
     httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
@@ -41,56 +47,67 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   )
 
   if(res$status_code != 200){
-    cat("Erro ao acessar o portal de jurisprudencia do TJRS")
+    message(paste0("Erro ", res$status_code, " ao acessar o portal de jurisprudencia do TJRS na consulta inicial.")) # Log error with status code
     return(NULL)
   }
 
   conteudo <- httr::content(res, as = "text") |> jsonlite::fromJSON()
 
-  n_paginas <- ceiling(conteudo$response$numFound / 10)
-
-  if (is.null(conteudo$response$numFound)) {
-    glue::glue("Nenhuma decisao encontrada") |> print()
+  total_resultados <- conteudo$response$numFound
+  if (is.null(total_resultados) || total_resultados == 0) { # Check explicitly for 0 results too
+    message("Nenhuma decisao encontrada para os critérios informados.") # Log no results
     return(NULL)
   }
 
-  df <- purrr::map_dfr(1:n_paginas, purrr::slowly(~ {
-    url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
+  n_paginas <- ceiling(total_resultados / 10)
+  message(paste0("Total de resultados encontrados: ", total_resultados))
+  message(paste0("Número total de páginas a serem baixadas: ", n_paginas)) # Log total pages
 
-    pagina <- .x
+  # Use map to get a list of lists (each inner list is the 'docs' from a page)
+  lista_docs <- purrr::map(1:n_paginas, purrr::slowly(~ {
+    pagina_atual <- .x
+    message(paste0("Baixando página ", pagina_atual, " de ", n_paginas, "...")) # Log page download progress
+
+    url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
     parametros <- list(
       "action" = "consultas_solr_ajax",
       "metodo" = "buscar_resultados",
-      "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
+      "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
     )
 
-    res <- httr::POST(
+    res_pagina <- httr::POST( # Renamed variable to avoid conflict
       url = url,
       httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
       body = parametros,
       httr::config(ssl_verifypeer = FALSE)
     )
 
-    conteudo <- httr::content(res, as = "text") |> jsonlite::fromJSON()
+    # Optional: Add basic check for page request status
+    if(res_pagina$status_code != 200){
+       message(paste0("Aviso: Falha ao buscar página ", pagina_atual, " (Status: ", res_pagina$status_code, "). Pulando esta página."))
+       return(NULL) # Return NULL for this page if it fails
+    }
 
-    return(conteudo$response$docs)
+    conteudo_pagina <- httr::content(res_pagina, as = "text") |> jsonlite::fromJSON() # Renamed variable
+
+    return(conteudo_pagina$response$docs)
   }, purrr::rate_delay(5)))
 
+  # Filter out NULL entries from failed page requests
+  lista_docs <- Filter(Negate(is.null), lista_docs)
 
-  if (.reportar == TRUE){
-  if (julgamento_inicial == "") {
-    glue::glue(
-      "Extrai do Portal de Jurisprudencia do Tribunal de Justica do Estado do Rio Grande do Sul todas as decisoes proferidas ate {julgamento_final}.") |> print()
-  } else if (julgamento_final == ""){
-    glue::glue(
-      "Extrai do Portal de Jurisprudencia do Tribunal de Justica do Estado do Rio Grande do Sul todas as decisoes proferidas desde {julgamento_inicial}.") |> print()
-  } else if (julgamento_final == "" & julgamento_inicial == "") {
-    glue::glue(
-      "Extrai do Portal de Jurisprudencia do Tribunal de Justica do Estado do Rio Grande do Sul todas as decisoes proferidas.") |> print()
-  } else {
-    glue::glue(
-      "Extrai do Portal de Jurisprudencia do Tribunal de Justica do Estado do Rio Grande do Sul todas as decisoes proferidas entre {julgamento_inicial} e {julgamento_final}.") |> print()}}
+  if (length(lista_docs) == 0) {
+      message("Nenhum documento foi baixado com sucesso após processar as páginas.")
+      return(NULL)
+  }
 
-  return(df)
+  # Flatten the list of lists into a single list
+  docs_combinados <- purrr::list_flatten(lista_docs)
+
+  # Convert the combined list to a JSON string
+  json_output <- jsonlite::toJSON(docs_combinados, auto_unbox = TRUE)
+
+  message("Busca de jurisprudência no TJRS concluída.") # Log completion
+  return(json_output)
 }
