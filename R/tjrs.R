@@ -102,7 +102,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     httpheader = c(
       "Accept" = "application/json",
       "Content-Type" = "application/x-www-form-urlencoded"
-    ),
+    )
   )
   
   # Add proxy configuration if needed
