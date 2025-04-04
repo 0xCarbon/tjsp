@@ -12,8 +12,7 @@
 #' @importFrom glue glue
 #' @importFrom jsonlite toJSON fromJSON
 #' @importFrom purrr map list_flatten rate_delay slowly
-#' @importFrom httr POST content user_agent config timeout use_proxy
-#' @importFrom curl curl_escape
+#' @importFrom httr POST content user_agent config timeout use_proxy set_config
 #'
 #' @export
 #'
@@ -75,20 +74,17 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       message(paste0(pattern, "Nenhuma configuração de proxy fornecida. Procedendo sem proxy."))
   }
 
-  message(paste0(pattern, "Configuração de proxy:"))
-  message(paste0(pattern, "  - Hostname: ", if(is.null(proxy_hostname)) "N/A" else proxy_hostname))
-  message(paste0(pattern, "  - Porta: ", if(is.null(proxy_port)) "N/A" else proxy_port))
-  message(paste0(pattern, "  - Usuário: ", if(is.null(proxy_username) || !nzchar(proxy_username)) "N/A" else proxy_username))
-  message(paste0(pattern, "  - Senha: ", if(is.null(proxy_password) || !nzchar(proxy_password)) "N/A" else "****")) # Mask password in log
-
   message(paste0(pattern, "Proxy configurado: ", use_proxy_config))
   # --- End Proxy Configuration ---
+
+  httr::set_config(httr::config(ssl_verifypeer = FALSE, accept_encoding = "latin1"))
+  httr::set_config(httr::use_proxy(proxy_hostname, proxy_port, username = proxy_username, password = proxy_password))
 
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
   pagina <- 1
-  dt_julgamento_de <- curl::curl_escape(julgamento_inicial)
-  dt_julgamento_ate <- curl::curl_escape(julgamento_final)
+  dt_julgamento_de <- URLencode(julgamento_inicial)
+  dt_julgamento_ate <- URLencode(julgamento_final)
 
   parametros <- list(
     "action" = "consultas_solr_ajax",
@@ -98,25 +94,10 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
   message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
 
-  # --- Create initial config list ---
-  initial_config <- list(ssl_verifypeer = FALSE, timeout = httr::timeout(timeout_seconds))
-  if (use_proxy_config) {
-      initial_config <- c(initial_config, list(
-          proxy = httr::use_proxy(
-              url = proxy_hostname,
-              port = proxy_port,
-              username = if (!is.null(proxy_username) && !is.na(proxy_username) && nzchar(proxy_username)) proxy_username else NULL,
-              password = if (!is.null(proxy_password) && !is.na(proxy_password) && nzchar(proxy_password)) proxy_password else NULL
-          )
-      ))
-  }
-  # --- End initial config list ---
-
   res <- httr::POST(
     url = url,
     httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
     body = parametros,
-    httr::config(!!!initial_config) # Apply the config list
   )
 
   if(res$status_code != 200){
@@ -179,7 +160,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       url = url,
       httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
       body = parametros,
-      httr::config(!!!page_config) # Apply the config list
     )
 
     # Optional: Add basic check for page request status
