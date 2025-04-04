@@ -209,13 +209,24 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       return(NULL)
     }
 
-    # Parse JSON response
+    # Parse JSON response directly (remove hex decoding)
     conteudo_pagina <- tryCatch({
+      # Convert raw bytes to character string if needed
+      if(is.raw(res_pagina)) {
+        res_pagina <- rawToChar(res_pagina)
+      }
       jsonlite::fromJSON(res_pagina)
     }, error = function(e) {
-      message(paste0(pattern, "Erro ao analisar a resposta JSON da página ", pagina_atual, ": ", e$message))
+      message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
+      # For debugging
+      message(paste0(pattern, "Primeiros 100 caracteres da resposta: ", substr(as.character(res_pagina), 1, 100)))
       return(NULL)
     })
+        
+    if(is.null(conteudo_pagina)) {
+      message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
+      return(NULL)
+    }
 
     # Check if the page response contains an error field
     if (!is.null(conteudo_pagina$error)) {
