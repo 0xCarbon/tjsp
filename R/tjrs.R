@@ -8,7 +8,8 @@
 #' @param timeout_seconds Tempo máximo em segundos para esperar por uma resposta da requisição. O padrão é 60 segundos.
 #' @param proxy_config Lista opcional contendo os detalhes da configuração do proxy. Deve conter os seguintes elementos nomeados: \code{hostname} (string), \code{port} (inteiro), \code{username} (string, opcional), \code{password} (string, opcional). O padrão é \code{NULL} (sem proxy).
 #' @param max_retries Número máximo de tentativas para cada requisição em caso de falha. O padrão é 3 tentativas.
-#' @return Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
+#' @param diretorio Diretório onde serão salvos os arquivos JSON. O padrão é "."
+#' @return Invisível. Os resultados serão salvos em arquivos JSON no diretório especificado.
 #'
 #' @importFrom glue glue
 #' @importFrom jsonlite toJSON fromJSON
@@ -20,8 +21,7 @@
 #' @examples
 #' \dontrun{
 #' # Buscar jurisprudência tjrs
-#' tjrs <- tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/03/2023")
-#' tjrs |> head(5)
+#' tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/03/2023")
 #'
 #' # Caso ele não encontre nada, mostrará e um aviso e retornará um valor NULL
 #' tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
@@ -36,14 +36,21 @@
 #' tjrs_with_proxy <- tjrs_jurisprudencia(
 #'   julgamento_inicial = "01/01/2023",
 #'   julgamento_final = "31/01/2023",
-#'   proxy_config = proxy_details
+#'   proxy_config = proxy_details,
+#'   diretorio = "tjrs_results"
 #' )
 #' }
-tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5, timeout_seconds = 60, proxy_config = NULL, max_retries = 3) {
+tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", delay = 5, timeout_seconds = 60, proxy_config = NULL, max_retries = 3, diretorio = ".") {
   # Create log pattern
   pattern <- glue::glue("[{julgamento_inicial}-{julgamento_final}] ")
 
   message(paste0(pattern, "Iniciando busca de jurisprudência no TJRS...")) # Log start
+  
+  # Verificar e criar diretório se não existir
+  if (!dir.exists(diretorio)) {
+    dir.create(diretorio, recursive = TRUE)
+    message(paste0(pattern, "Diretório criado: ", diretorio))
+  }
 
   # --- Initialize Proxy Variables ---
   proxy_hostname <- NULL
@@ -148,7 +155,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   # Check if the request returned NULL (error occurred)
   if(is.null(res)) {
     message(paste0(pattern, "Falha na conexão com o portal de jurisprudência do TJRS após ", max_retries, " tentativas."))
-    return(NULL)
+    return(invisible(NULL))
   }
 
   # Parse JSON response directly (remove hex decoding)
@@ -167,19 +174,19 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   
   if(is.null(conteudo)) {
     message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
-    return(NULL)
+    return(invisible(NULL))
   }
 
   # Check if the response itself contains an error field
   if (!is.null(conteudo$error)) {
     message(paste0(pattern, "Erro retornado pela API do TJRS na consulta inicial. Detalhes: ", conteudo$error)) # Log API error
-    return(NULL)
+    return(invisible(NULL))
   }
 
   # Check for response structure validity
   if (is.null(conteudo$response) || is.null(conteudo$response$numFound)) {
      message(paste0(pattern, "Estrutura de resposta inesperada da API do TJRS na consulta inicial."))
-     return(NULL)
+     return(invisible(NULL))
   }
 
   total_resultados <- conteudo$response$numFound
@@ -192,87 +199,122 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   message(paste0(pattern, "Total de resultados encontrados: ", total_resultados))
   message(paste0(pattern, "Número total de páginas a serem baixadas: ", n_paginas))
 
-  # Store docs from the first request (page 1)
-  primeira_pagina <- conteudo$response$docs
-  message(paste0(pattern, "Usando resultados da consulta inicial para a página 1"))
+  # Process and save first page results
+  primeiro_arquivo <- processar_e_salvar_pagina(1, conteudo)
+  message(paste0(pattern, "Página 1 salva em: ", primeiro_arquivo))
   
-  # If there's only one page, return the results immediately
+  arquivos_salvos <- c(primeiro_arquivo)
+  
+  # If there's only one page, return
   if (n_paginas <= 1) {
-    json_output <- jsonlite::toJSON(primeira_pagina, auto_unbox = TRUE)
     message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
-    return(json_output)
+    return(invisible(arquivos_salvos))
   }
   
-  # Use map to get a list of lists starting from page 2
-  lista_docs <- c(
-    list(primeira_pagina),  # Add the first page results
-    purrr::map(2:n_paginas, purrr::slowly(~ {
-      pagina_atual <- .x
-      message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "..."))
+  # Initialize vector to track failed pages
+  failed_pages <- c()
+  
+  # Process remaining pages
+  resultados_paginas <- purrr::map(2:n_paginas, purrr::slowly(~ {
+    pagina_atual <- .x
+    message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "..."))
 
-      parametros_pagina <- list(
-        "action" = "consultas_solr_ajax",
-        "metodo" = "buscar_resultados",
-        "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
-      )
+    parametros_pagina <- list(
+      "action" = "consultas_solr_ajax",
+      "metodo" = "buscar_resultados",
+      "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
+    )
 
-      # Use the retry function for page requests
-      res_pagina <- fazer_requisicao_com_retry(url, parametros_pagina, curl_options)
+    # Use the retry function for page requests
+    res_pagina <- fazer_requisicao_com_retry(url, parametros_pagina, curl_options)
 
-      if(is.null(res_pagina)) {
-        message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, " após ", max_retries, " tentativas. Pulando esta página."))
-        return(NULL)
-      }
-
-      # Parse JSON response directly (remove hex decoding)
-      conteudo_pagina <- tryCatch({
-        # Convert raw bytes to character string if needed
-        if(is.raw(res_pagina)) {
-          res_pagina <- rawToChar(res_pagina)
-        }
-        jsonlite::fromJSON(res_pagina)
-      }, error = function(e) {
-        message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
-        # For debugging
-        message(paste0(pattern, "Primeiros 100 caracteres da resposta: ", substr(as.character(res_pagina), 1, 100)))
-        return(NULL)
-      })
-        
-      if(is.null(conteudo_pagina)) {
-        message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
-        return(NULL)
-      }
-
-      # Check if the page response contains an error field
-      if (!is.null(conteudo_pagina$error)) {
-          message(paste0(pattern, "Aviso: Erro retornado pela API do TJRS ao buscar página ", pagina_atual, ". Detalhes: ", conteudo_pagina$error,". Pulando esta página."))
-          return(NULL)
-      }
-
-      # Check for expected response structure on the page
-      if (is.null(conteudo_pagina$response) || is.null(conteudo_pagina$response$docs)) {
-           message(paste0(pattern, "Aviso: Estrutura de resposta inesperada da API do TJRS na página ", pagina_atual, ". Pulando esta página."))
-           return(NULL)
-      }
-
-      return(conteudo_pagina$response$docs)
-    }, purrr::rate_delay(as.integer(delay))))
-  )
-
-  # Filter out NULL entries from failed page requests
-  lista_docs <- Filter(Negate(is.null), lista_docs)
-
-  if (length(lista_docs) == 0) {
-      message(paste0(pattern, "Nenhum documento foi baixado com sucesso após processar as páginas."))
+    if(is.null(res_pagina)) {
+      message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, " após ", max_retries, " tentativas. Pulando esta página."))
+      failed_pages <<- c(failed_pages, pagina_atual)
       return(NULL)
+    }
+
+    # Parse JSON response directly
+    conteudo_pagina <- tryCatch({
+      # Convert raw bytes to character string if needed
+      if(is.raw(res_pagina)) {
+        res_pagina <- rawToChar(res_pagina)
+      }
+      jsonlite::fromJSON(res_pagina)
+    }, error = function(e) {
+      message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
+      failed_pages <<- c(failed_pages, pagina_atual)
+      return(NULL)
+    })
+      
+    if(is.null(conteudo_pagina)) {
+      message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
+      failed_pages <<- c(failed_pages, pagina_atual)
+      return(NULL)
+    }
+
+    # Check if the page response contains an error field
+    if (!is.null(conteudo_pagina$error)) {
+      message(paste0(pattern, "Aviso: Erro retornado pela API do TJRS ao buscar página ", pagina_atual, ". Detalhes: ", conteudo_pagina$error,". Pulando esta página."))
+      failed_pages <<- c(failed_pages, pagina_atual)
+      return(NULL)
+    }
+
+    # Check for expected response structure on the page
+    if (is.null(conteudo_pagina$response) || is.null(conteudo_pagina$response$docs)) {
+      message(paste0(pattern, "Aviso: Estrutura de resposta inesperada da API do TJRS na página ", pagina_atual, ". Pulando esta página."))
+      failed_pages <<- c(failed_pages, pagina_atual)
+      return(NULL)
+    }
+
+    # Save to file and return the file path
+    arquivo <- processar_e_salvar_pagina(pagina_atual, conteudo_pagina)
+    arquivos_salvos <<- c(arquivos_salvos, arquivo)
+    return(arquivo)
+  }, purrr::rate_delay(as.integer(delay))))
+  
+  # Summary message
+  message(paste0(pattern, "Download concluído. ", length(arquivos_salvos), " de ", n_paginas, 
+                " páginas salvas no diretório: ", diretorio))
+  
+  if (length(failed_pages) > 0) {
+    message(paste0(pattern, "As seguintes páginas falharam: ", paste(failed_pages, collapse = ", ")))
   }
-
-  # Flatten the list of lists into a single list
-  docs_combinados <- purrr::list_flatten(lista_docs)
-
-  # Convert the combined list to a JSON string
-  json_output <- jsonlite::toJSON(docs_combinados, auto_unbox = TRUE)
-
+  
   message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
-  return(json_output)
+  return(invisible(arquivos_salvos))
+}
+
+# Helper function to format file names
+formatar_arquivo_tjrs <- function(julgamento_inicial, julgamento_final, pagina, diretorio) {
+  hora <- stringr::str_replace_all(Sys.time(), "\\D", "_")
+  
+  if (julgamento_inicial != "" && julgamento_final != "") {
+    i <- stringr::str_replace_all(julgamento_inicial, "\\D", "_")
+    f <- stringr::str_replace_all(julgamento_final, "\\D", "_")
+    arquivo <- file.path(diretorio, paste0(hora, "_tjrs_inicio_", i, "_fim_", f, "_pagina_", pagina, ".json"))
+  } else {
+    arquivo <- file.path(diretorio, paste0(hora, "_tjrs_pagina_", pagina, ".json"))
+  }
+  
+  return(arquivo)
+}
+
+# --- Função para processar e salvar uma página ---
+processar_e_salvar_pagina <- function(pagina_atual, conteudo_pagina) {
+  if (!is.null(conteudo_pagina) && !is.null(conteudo_pagina$response) && !is.null(conteudo_pagina$response$docs)) {
+    # Create filename
+    arquivo <- formatar_arquivo_tjrs(julgamento_inicial, julgamento_final, pagina_atual, diretorio)
+    
+    # Save docs to file
+    jsonlite::write_json(
+      conteudo_pagina$response$docs, 
+      arquivo, 
+      auto_unbox = TRUE,
+      pretty = TRUE
+    )
+    
+    return(arquivo)
+  }
+  return(NULL)
 }

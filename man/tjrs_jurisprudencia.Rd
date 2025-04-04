@@ -10,7 +10,8 @@ tjrs_jurisprudencia(
   delay = 5,
   timeout_seconds = 60,
   proxy_config = NULL,
-  max_retries = 3
+  max_retries = 3,
+  diretorio = "."
 )
 }
 \arguments{
@@ -25,9 +26,11 @@ tjrs_jurisprudencia(
 \item{proxy_config}{Lista opcional contendo os detalhes da configuração do proxy. Deve conter os seguintes elementos nomeados: \code{hostname} (string), \code{port} (inteiro), \code{username} (string, opcional), \code{password} (string, opcional). O padrão é \code{NULL} (sem proxy).}
 
 \item{max_retries}{Número máximo de tentativas para cada requisição em caso de falha. O padrão é 3 tentativas.}
+
+\item{diretorio}{Diretório onde serão salvos os arquivos JSON. O padrão é "."}
 }
 \value{
-Uma string JSON contendo um array com as informações sobre as decisões encontradas (originalmente no campo 'docs' da resposta da API).
+Invisível. Os resultados serão salvos em arquivos JSON no diretório especificado.
 }
 \description{
 Esta função permite buscar jurisprudência no Portal de Jurisprudência do Tribunal de Justiça do Estado do Rio Grande do Sul (TJRS) com base no período de julgamento.
@@ -35,8 +38,7 @@ Esta função permite buscar jurisprudência no Portal de Jurisprudência do Tri
 \examples{
 \dontrun{
 # Buscar jurisprudência tjrs
-tjrs <- tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/03/2023")
-tjrs |> head(5)
+tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/03/2023")
 
 # Caso ele não encontre nada, mostrará e um aviso e retornará um valor NULL
 tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
@@ -51,7 +53,8 @@ proxy_details <- list(
 tjrs_with_proxy <- tjrs_jurisprudencia(
   julgamento_inicial = "01/01/2023",
   julgamento_final = "31/01/2023",
-  proxy_config = proxy_details
+  proxy_config = proxy_details,
+  diretorio = "tjrs_results"
 )
 }
 }
