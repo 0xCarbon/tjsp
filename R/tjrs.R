@@ -95,7 +95,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   initial_config_list <- list(
       ssl_verifypeer = FALSE,
       accept_encoding = "latin1", # Keep encoding setting if needed
-      timeout = httr::timeout(timeout_seconds)
+      timeout = as.integer(timeout_seconds) # Convert to integer before passing
   )
   if (use_proxy_config) {
       initial_config_list <- c(initial_config_list, list(
@@ -157,7 +157,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     page_config_list <- list(
         ssl_verifypeer = FALSE,
         accept_encoding = "latin1", # Ensure encoding is consistent if needed
-        timeout = httr::timeout(timeout_seconds)
+        timeout = as.integer(timeout_seconds) # Pass the numeric value directly
     )
     if (use_proxy_config) {
         page_config_list <- c(page_config_list, list(
@@ -205,7 +205,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     }
 
     return(conteudo_pagina$response$docs)
-  }, purrr::rate_delay(delay)))
+  }, purrr::rate_delay(as.integer(delay))))
 
   # Filter out NULL entries from failed page requests
   lista_docs <- Filter(Negate(is.null), lista_docs)
