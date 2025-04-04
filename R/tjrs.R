@@ -52,6 +52,40 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     message(paste0(pattern, "Diretório criado: ", diretorio))
   }
 
+  # --- Helper function to format file names ---
+  formatar_arquivo_tjrs <- function(pagina) {
+    hora <- stringr::str_replace_all(Sys.time(), "\\D", "_")
+    
+    if (julgamento_inicial != "" && julgamento_final != "") {
+      i <- stringr::str_replace_all(julgamento_inicial, "\\D", "_")
+      f <- stringr::str_replace_all(julgamento_final, "\\D", "_")
+      arquivo <- file.path(diretorio, paste0(hora, "_tjrs_inicio_", i, "_fim_", f, "_pagina_", pagina, ".json"))
+    } else {
+      arquivo <- file.path(diretorio, paste0(hora, "_tjrs_pagina_", pagina, ".json"))
+    }
+    
+    return(arquivo)
+  }
+
+  # --- Função para processar e salvar uma página ---
+  processar_e_salvar_pagina <- function(pagina_atual, conteudo_pagina) {
+    if (!is.null(conteudo_pagina) && !is.null(conteudo_pagina$response) && !is.null(conteudo_pagina$response$docs)) {
+      # Create filename
+      arquivo <- formatar_arquivo_tjrs(pagina_atual)
+      
+      # Save docs to file
+      jsonlite::write_json(
+        conteudo_pagina$response$docs, 
+        arquivo, 
+        auto_unbox = TRUE,
+        pretty = TRUE
+      )
+      
+      return(arquivo)
+    }
+    return(NULL)
+  }
+
   # --- Initialize Proxy Variables ---
   proxy_hostname <- NULL
   proxy_port     <- NULL
@@ -283,38 +317,4 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   
   message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
   return(invisible(arquivos_salvos))
-}
-
-# Helper function to format file names
-formatar_arquivo_tjrs <- function(julgamento_inicial, julgamento_final, pagina, diretorio) {
-  hora <- stringr::str_replace_all(Sys.time(), "\\D", "_")
-  
-  if (julgamento_inicial != "" && julgamento_final != "") {
-    i <- stringr::str_replace_all(julgamento_inicial, "\\D", "_")
-    f <- stringr::str_replace_all(julgamento_final, "\\D", "_")
-    arquivo <- file.path(diretorio, paste0(hora, "_tjrs_inicio_", i, "_fim_", f, "_pagina_", pagina, ".json"))
-  } else {
-    arquivo <- file.path(diretorio, paste0(hora, "_tjrs_pagina_", pagina, ".json"))
-  }
-  
-  return(arquivo)
-}
-
-# --- Função para processar e salvar uma página ---
-processar_e_salvar_pagina <- function(pagina_atual, conteudo_pagina) {
-  if (!is.null(conteudo_pagina) && !is.null(conteudo_pagina$response) && !is.null(conteudo_pagina$response$docs)) {
-    # Create filename
-    arquivo <- formatar_arquivo_tjrs(julgamento_inicial, julgamento_final, pagina_atual, diretorio)
-    
-    # Save docs to file
-    jsonlite::write_json(
-      conteudo_pagina$response$docs, 
-      arquivo, 
-      auto_unbox = TRUE,
-      pretty = TRUE
-    )
-    
-    return(arquivo)
-  }
-  return(NULL)
 }
