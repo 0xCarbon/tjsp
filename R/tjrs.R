@@ -91,32 +91,43 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
   message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
 
-  # Create a single config object that includes all settings
+  # Create a base config object first
   http_config <- httr::config(
     ssl_verifypeer = FALSE,
     accept_encoding = "latin1",
     timeout = as.integer(timeout_seconds)
+    cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl")
   )
   
-  # Add proxy configuration to the config object if needed
+  # Add proxy configuration separately if needed
   if (use_proxy_config) {
-    # Use httr::set_config instead of with_config for global proxy settings
-    http_config <- httr::config(
-      ssl_verifypeer = FALSE,
-      accept_encoding = "latin1",
-      timeout = as.integer(timeout_seconds),
-      proxy = httr::use_proxy(
-        url = proxy_hostname, 
-        port = proxy_port,
-        username = proxy_username, 
-        password = proxy_password,
-        auth = "any" # Add explicit authentication method
-      ),
-      followlocation = TRUE, # Allow redirects
-      cainfo = system.file("CurlSSL", "cacert.pem", package = "RCurl") # Use the certificate bundle from RCurl
-    )
-    # Add message for debugging
-    message(paste0(pattern, "Configurado proxy completo com SSL verification desativado"))
+    # Create proxy configuration correctly
+    proxy_url <- paste0(proxy_hostname, ":", proxy_port)
+    
+    # Handle authentication if credentials are provided
+    if (!is.null(proxy_username) && !is.null(proxy_password) && 
+        nzchar(proxy_username) && nzchar(proxy_password)) {
+      proxy_auth <- httr::authenticate(proxy_username, proxy_password, type = "basic")
+      message(paste0(pattern, "Configurando proxy com autenticação"))
+      
+      # Set proxy with authentication
+      http_config <- httr::config(
+        proxy = proxy_url,
+        followlocation = TRUE,
+      )
+      
+      # Apply both configs together
+      http_config <- c(http_config, proxy_auth)
+    } else {
+      # Set proxy without authentication
+      message(paste0(pattern, "Configurando proxy sem autenticação"))
+      http_config <- httr::config(
+        proxy = proxy_url,
+        followlocation = TRUE
+      )
+    }
+    
+    message(paste0(pattern, "Proxy configurado: ", proxy_url))
   }
 
   # Wrap the POST request in tryCatch to better handle errors
