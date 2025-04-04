@@ -24,7 +24,10 @@
 #' tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
 #' }
 tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") {
-  message("Iniciando busca de jurisprudência no TJRS...") # Log start
+  # Create log pattern
+  pattern <- glue::glue("[{julgamento_inicial}-{julgamento_final}] ")
+
+  message(paste0(pattern, "Iniciando busca de jurisprudência no TJRS...")) # Log start
 
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
@@ -38,7 +41,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") 
     "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual=1&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
   )
 
-  message("Realizando consulta inicial para obter o número de páginas...")
+  message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
   res <- httr::POST(
     url = url,
     httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
@@ -47,7 +50,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") 
   )
 
   if(res$status_code != 200){
-    message(paste0("Erro ", res$status_code, " ao acessar o portal de jurisprudencia do TJRS na consulta inicial.")) # Log error with status code
+    message(paste0(pattern, "Erro ", res$status_code, " ao acessar o portal de jurisprudencia do TJRS na consulta inicial.")) # Log error with status code
     return(NULL)
   }
 
@@ -55,18 +58,18 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") 
 
   total_resultados <- conteudo$response$numFound
   if (is.null(total_resultados) || total_resultados == 0) { # Check explicitly for 0 results too
-    message("Nenhuma decisao encontrada para os critérios informados.") # Log no results
+    message(paste0(pattern, "Nenhuma decisao encontrada para os critérios informados.")) # Log no results
     return(NULL)
   }
 
   n_paginas <- ceiling(total_resultados / 10)
-  message(paste0("Total de resultados encontrados: ", total_resultados))
-  message(paste0("Número total de páginas a serem baixadas: ", n_paginas)) # Log total pages
+  message(paste0(pattern, "Total de resultados encontrados: ", total_resultados))
+  message(paste0(pattern, "Número total de páginas a serem baixadas: ", n_paginas)) # Log total pages
 
   # Use map to get a list of lists (each inner list is the 'docs' from a page)
   lista_docs <- purrr::map(1:n_paginas, purrr::slowly(~ {
     pagina_atual <- .x
-    message(paste0("Baixando página ", pagina_atual, " de ", n_paginas, "...")) # Log page download progress
+    message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "...")) # Log page download progress
 
     url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
@@ -85,7 +88,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") 
 
     # Optional: Add basic check for page request status
     if(res_pagina$status_code != 200){
-       message(paste0("Aviso: Falha ao buscar página ", pagina_atual, " (Status: ", res_pagina$status_code, "). Pulando esta página."))
+       message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, " (Status: ", res_pagina$status_code, "). Pulando esta página."))
        return(NULL) # Return NULL for this page if it fails
     }
 
@@ -98,7 +101,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") 
   lista_docs <- Filter(Negate(is.null), lista_docs)
 
   if (length(lista_docs) == 0) {
-      message("Nenhum documento foi baixado com sucesso após processar as páginas.")
+      message(paste0(pattern, "Nenhum documento foi baixado com sucesso após processar as páginas."))
       return(NULL)
   }
 
@@ -108,6 +111,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "") 
   # Convert the combined list to a JSON string
   json_output <- jsonlite::toJSON(docs_combinados, auto_unbox = TRUE)
 
-  message("Busca de jurisprudência no TJRS concluída.") # Log completion
+  message(paste0(pattern, "Busca de jurisprudência no TJRS concluída.")) # Log completion
   return(json_output)
 }
