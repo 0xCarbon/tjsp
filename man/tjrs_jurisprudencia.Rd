@@ -5,15 +5,12 @@
 \title{Buscar jurisprudência no Tribunal de Justiça do RS}
 \usage{
 tjrs_jurisprudencia(
-  classe,
   julgamento_inicial = "",
   julgamento_final = "",
   .reportar = TRUE
 )
 }
 \arguments{
-\item{classe}{Classe processual para a qual deseja-se buscar jurisprudência.}
-
 \item{julgamento_inicial}{Data de julgamento inicial das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data inicial.}
 
 \item{julgamento_final}{Data de julgamento final das decisões a serem buscadas (no formato "DD/MM/YYYY"). O padrão é "" (vazio), indicando que não há restrição de data final.}
@@ -24,15 +21,15 @@ tjrs_jurisprudencia(
 Um data frame contendo informações sobre as decisões encontradas, incluindo número do processo, data do julgamento, relator, ementa e tribunal.
 }
 \description{
-Esta função permite buscar jurisprudência no Portal de Jurisprudência do Tribunal de Justiça do Estado do Rio Grande do Sul (TJRS) com base na classe processual e no período de julgamento.
+Esta função permite buscar jurisprudência no Portal de Jurisprudência do Tribunal de Justiça do Estado do Rio Grande do Sul (TJRS) com base no período de julgamento.
 }
 \examples{
 \dontrun{
-# Buscar jurisprudência com base na classe processual
-tjrs <- tjrs_jurisprudencia(classe = "Direta de Inconstitucionalidade", julgamento_inicial = "01/01/2023", julgamento_final = "31/03/2023")
+# Buscar jurisprudência tjrs
+tjrs <- tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/03/2023")
 tjrs |> head(5)
 
 # Caso ele não encontre nada, mostrará e um aviso e retornará um valor NULL
-tjrs_jurisprudencia(classe = "Direta de Inconstitucionalidade", julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
+tjrs_jurisprudencia(julgamento_inicial = "01/01/2023", julgamento_final = "31/02/2023")
 }
 }
