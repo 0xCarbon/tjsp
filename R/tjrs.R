@@ -113,7 +113,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       # Set proxy with authentication
       http_config <- httr::config(
         proxy = proxy_url,
-        followlocation = TRUE,
+        followlocation = TRUE
       )
       
       # Apply both configs together
