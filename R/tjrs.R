@@ -92,28 +92,18 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   message(paste0(pattern, "Realizando consulta inicial para obter o número de páginas..."))
 
   # --- Create initial config list ---
-  initial_config_list <- list(
+  initial_config_list <- httr::config(
       ssl_verifypeer = FALSE,
       accept_encoding = "latin1", # Keep encoding setting if needed
-      timeout = as.integer(timeout_seconds) # Convert to integer before passing
+      timeout = as.integer(timeout_seconds), # Ensure it's integer
+      proxy = use_proxy(url = proxy_hostname, port = proxy_port, username = proxy_username, password = proxy_password),
+      user_agent = user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0")
   )
-  if (use_proxy_config) {
-      initial_config_list <- c(initial_config_list, list(
-          proxy = httr::use_proxy(
-              url = proxy_hostname,
-              port = proxy_port,
-              username = if (!is.null(proxy_username) && !is.na(proxy_username) && nzchar(proxy_username)) proxy_username else NULL,
-              password = if (!is.null(proxy_password) && !is.na(proxy_password) && nzchar(proxy_password)) proxy_password else NULL
-          )
-      ))
-  }
-  # --- End initial config list ---
 
   res <- httr::POST(
     url = url,
-    httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
     body = parametros,
-    config = do.call(httr::config, initial_config_list) # Pass the config list explicitly
+    config = initial_config_list
   )
 
   if(res$status_code != 200){
@@ -152,25 +142,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
     url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
 
-    # --- Create page config list ---
-    # Combine settings into one list for config
-    page_config_list <- list(
-        ssl_verifypeer = FALSE,
-        accept_encoding = "latin1", # Ensure encoding is consistent if needed
-        timeout = as.integer(timeout_seconds) # Pass the numeric value directly
-    )
-    if (use_proxy_config) {
-        page_config_list <- c(page_config_list, list(
-            proxy = httr::use_proxy(
-                url = proxy_hostname,
-                port = proxy_port,
-                username = if (!is.null(proxy_username) && !is.na(proxy_username) && nzchar(proxy_username)) proxy_username else NULL,
-                password = if (!is.null(proxy_password) && !is.na(proxy_password) && nzchar(proxy_password)) proxy_password else NULL
-            )
-        ))
-    }
-    # --- End page config list ---
-
     parametros <- list(
       "action" = "consultas_solr_ajax",
       "metodo" = "buscar_resultados",
@@ -179,9 +150,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
     res_pagina <- httr::POST( # Renamed variable to avoid conflict
       url = url,
-      httr::user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0"),
       body = parametros,
-      config = do.call(httr::config, page_config_list) # Pass the config list explicitly
+      config = initial_config_list
     )
 
     # Optional: Add basic check for page request status
@@ -205,7 +175,7 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     }
 
     return(conteudo_pagina$response$docs)
-  }, purrr::rate_delay(as.integer(delay))))
+  }, purrr::rate_delay(as.integer(delay)))) # Ensure delay is integer for rate_delay
 
   # Filter out NULL entries from failed page requests
   lista_docs <- Filter(Negate(is.null), lista_docs)
