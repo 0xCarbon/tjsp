@@ -141,7 +141,9 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     httpheader = c(
       "Accept" = "application/json",
       "Content-Type" = "application/x-www-form-urlencoded"
-    )
+    ),
+    cookiefile = tempfile(), # Add cookie file to store cookies
+    cookiejar = tempfile()   # Add cookie jar to save cookies
   )
   
   # Add proxy configuration if needed
@@ -156,6 +158,10 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       curl_options$proxyuserpwd <- paste0(proxy_username, ":", proxy_password)
     }
   }
+
+  # Create a single curl handle to maintain cookies between requests
+  curl_handle <- RCurl::getCurlHandle()
+  RCurl::curlSetOpt(.opts = curl_options, curl = curl_handle)
 
   # Helper function for requests with retry and exponential backoff
   fazer_requisicao_com_retry <- function(url, parametros, opcoes, tentativa = 1) {
@@ -175,7 +181,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
         uri = url,
         .params = parametros,
         .opts = opcoes,
-        style = "post"
+        style = "post",
+        curl = curl_handle  # Pass the shared curl handle to maintain cookies
       )
     }, error = function(e) {
       message(paste0(pattern, "Erro na tentativa ", tentativa, ": ", e$message))
@@ -258,6 +265,8 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       "metodo" = "buscar_resultados",
       "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
     )
+
+    
 
     # Use the retry function for page requests
     res_pagina <- fazer_requisicao_com_retry(url, parametros_pagina, curl_options)
