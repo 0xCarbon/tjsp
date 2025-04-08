@@ -244,12 +244,10 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   primeiro_arquivo <- processar_e_salvar_pagina(1, conteudo)
   message(paste0(pattern, "Página 1 salva em: ", primeiro_arquivo))
   
-  arquivos_salvos <- c(primeiro_arquivo)
-  
   # If there's only one page, return
   if (n_paginas <= 1) {
     message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
-    return(invisible(arquivos_salvos))
+    return(invisible(NULL))
   }
   
   # Initialize vector to track failed pages
@@ -312,12 +310,14 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
     # Save to file and return the file path
     arquivo <- processar_e_salvar_pagina(pagina_atual, conteudo_pagina)
-    arquivos_salvos <<- c(arquivos_salvos, arquivo)
     return(arquivo)
   }, purrr::rate_delay(as.integer(delay))))
   
+  # Calculate successful pages
+  sucessful_pages <- length(resultados_paginas[!sapply(resultados_paginas, is.null)]) + 1  # +1 for first page
+  
   # Summary message
-  message(paste0(pattern, "Download concluído. ", length(arquivos_salvos), " de ", n_paginas, 
+  message(paste0(pattern, "Download concluído. ", sucessful_pages, " de ", n_paginas, 
                 " páginas salvas no diretório: ", diretorio))
   
   if (length(failed_pages) > 0) {
@@ -325,5 +325,5 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
   }
   
   message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
-  return(invisible(arquivos_salvos))
+  return(invisible(NULL))
 }
