@@ -107,7 +107,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
 
       use_proxy_config <- TRUE
       message(paste0(pattern, "Usando proxy da configuração: ", proxy_hostname, ":", proxy_port))
-
     } else {
       warning(paste0(pattern, "Configuração de proxy fornecida está incompleta ou inválida. Deve ser uma lista com 'hostname' (string não vazia) e 'port' (inteiro > 0). Procedendo sem proxy."))
     }
@@ -115,7 +114,6 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       message(paste0(pattern, "Nenhuma configuração de proxy fornecida. Procedendo sem proxy."))
   }
 
-  message(paste0(pattern, "Usando proxy da configuração: ", proxy_hostname, ":", proxy_port))
   # --- End Proxy Configuration ---
 
   url <- "https://www.tjrs.jus.br/buscas/jurisprudencia/ajax.php"
@@ -250,13 +248,17 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
     return(invisible(NULL))
   }
   
-  # Initialize vector to track failed pages
-  failed_pages <- c()
+  # Track only successful pages count
+  successful_pages <- 1  # Start with 1 for the first page
   
-  # Process remaining pages
-  resultados_paginas <- purrr::map(2:n_paginas, purrr::slowly(~ {
-    pagina_atual <- .x
+  # Process remaining pages - using a for loop instead of purrr::map to avoid collecting all results
+  for (pagina_atual in 2:n_paginas) {
     message(paste0(pattern, "Baixando página ", pagina_atual, " de ", n_paginas, "..."))
+    
+    # Add delay between requests
+    if (pagina_atual > 2) {
+      Sys.sleep(delay)
+    }
 
     parametros_pagina <- list(
       "action" = "consultas_solr_ajax",
@@ -264,15 +266,12 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       "parametros" = glue::glue("aba=jurisprudencia&realizando_pesquisa=1&pagina_atual={pagina_atual}&q_palavra_chave=&conteudo_busca=ementa_completa&filtroComAExpressao=&filtroComQualquerPalavra=&filtroSemAsPalavras=&filtroTribunal=-1&filtroRelator=-1&filtroOrgaoJulgador=-1&filtroTipoProcesso=-1&filtroClasseCnj=-1&assuntoCnj=-1&data_julgamento_de={dt_julgamento_de}&data_julgamento_ate={dt_julgamento_ate}&filtroNumeroProcesso=&data_publicacao_de=&data_publicacao_ate=&facet=on&facet.sort=index&facet.limit=index&wt=json&ordem=desc&start=0")
     )
 
-    
-
     # Use the retry function for page requests
     res_pagina <- fazer_requisicao_com_retry(url, parametros_pagina, curl_options)
 
     if(is.null(res_pagina)) {
       message(paste0(pattern, "Aviso: Falha ao buscar página ", pagina_atual, " após ", max_retries, " tentativas. Pulando esta página."))
-      failed_pages <<- c(failed_pages, pagina_atual)
-      return(NULL)
+      next
     }
 
     # Parse JSON response directly
@@ -281,48 +280,51 @@ tjrs_jurisprudencia <- function(julgamento_inicial = "", julgamento_final = "", 
       if(is.raw(res_pagina)) {
         res_pagina <- rawToChar(res_pagina)
       }
-      jsonlite::fromJSON(res_pagina)
+      result <- jsonlite::fromJSON(res_pagina)
+      # Clear large variable to free memory
+      res_pagina <- NULL
+      result
     }, error = function(e) {
-      message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message))
-      failed_pages <<- c(failed_pages, pagina_atual)
+      message(paste0(pattern, "Erro ao analisar a resposta JSON: ", e$message, " (página ", pagina_atual, ")"))
       return(NULL)
     })
       
     if(is.null(conteudo_pagina)) {
-      message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS."))
-      failed_pages <<- c(failed_pages, pagina_atual)
-      return(NULL)
+      message(paste0(pattern, "Falha ao processar a resposta do portal de jurisprudência do TJRS para página ", pagina_atual, "."))
+      next
     }
 
     # Check if the page response contains an error field
     if (!is.null(conteudo_pagina$error)) {
       message(paste0(pattern, "Aviso: Erro retornado pela API do TJRS ao buscar página ", pagina_atual, ". Detalhes: ", conteudo_pagina$error,". Pulando esta página."))
-      failed_pages <<- c(failed_pages, pagina_atual)
-      return(NULL)
+      next
     }
 
     # Check for expected response structure on the page
     if (is.null(conteudo_pagina$response) || is.null(conteudo_pagina$response$docs)) {
       message(paste0(pattern, "Aviso: Estrutura de resposta inesperada da API do TJRS na página ", pagina_atual, ". Pulando esta página."))
-      failed_pages <<- c(failed_pages, pagina_atual)
-      return(NULL)
+      next
     }
 
     # Save to file and return the file path
     arquivo <- processar_e_salvar_pagina(pagina_atual, conteudo_pagina)
-    return(arquivo)
-  }, purrr::rate_delay(as.integer(delay))))
-  
-  # Calculate successful pages
-  sucessful_pages <- length(resultados_paginas[!sapply(resultados_paginas, is.null)]) + 1  # +1 for first page
+    
+    # Increment successful pages counter if we got this far
+    successful_pages <- successful_pages + 1
+    
+    # Free memory after processing
+    conteudo_pagina <- NULL
+    if ((pagina_atual %% 20) == 0) {
+      gc()  # Garbage collection every 20 pages
+    }
+  }
   
   # Summary message
-  message(paste0(pattern, "Download concluído. ", sucessful_pages, " de ", n_paginas, 
+  message(paste0(pattern, "Download concluído. ", successful_pages, " de ", n_paginas, 
                 " páginas salvas no diretório: ", diretorio))
   
-  if (length(failed_pages) > 0) {
-    message(paste0(pattern, "As seguintes páginas falharam: ", paste(failed_pages, collapse = ", ")))
-  }
+  # Final garbage collection
+  gc()
   
   message(paste0(pattern, "Busca de jurisprudência no TJRS concluída."))
   return(invisible(NULL))
